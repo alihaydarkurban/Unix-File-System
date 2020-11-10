@@ -1,5 +1,5 @@
-#ifndef FileSystem_H
-#define FileSystem_H
+#ifndef FILE_SYSTEM_H
+#define FILE_SYSTEM_H
 
 #include <ctime>
 
@@ -31,12 +31,6 @@ struct Directory
 	char file_name[FileNameLength];
 };
 
-struct ChildParent
-{
-	int child_inode_id;
-	int parent_inode_id;
-};
-
 struct SuperBlock
 {
 	int block_size;
@@ -51,6 +45,7 @@ struct SuperBlock
 struct iNode
 {
 	int i_node_id;
+	int parent_inode_id;
 	int size_of_file; 
 	int type; // 0 means that directory, 1 means that file, -1 means that not initialized
 	int direct_block[DirectBlocksNum]; // -1 means that not initialize

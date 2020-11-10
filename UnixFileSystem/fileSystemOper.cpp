@@ -25,7 +25,11 @@ int free_bitmap_index(FILE *file_ptr, SuperBlock sb);
 int free_bitmap_inode_index(FILE *file_ptr, SuperBlock sb);
 int calculate_free_inode_addr(SuperBlock sb, int i_node_index);
 int calculate_free_block_addr(SuperBlock sb, int block_index);
-vector<int> calculate_blocks_addr(FILE *file_ptr, SuperBlock sb, int i_node_id);
+int calculate_max_dir_in_a_block(SuperBlock sb);
+vector<int> calculate_blocks_index(FILE *file_ptr, SuperBlock sb, int i_node_id);
+int find_block_addr_for_adding_file(FILE *file_ptr, SuperBlock sb, int i_node_id, vector<int> blocks_index);
+int free_bitmap_index_different_from_given(FILE *file_ptr, SuperBlock sb, int given_index);
+int find_direct_block_index(iNode i_node);
 
 void printSuperBlock(SuperBlock sb);
 void print_iNode(iNode i_node);
@@ -87,7 +91,7 @@ int main(int argc, char *argv[])
 	fread(&deneme, sizeof(deneme), 1, file_ptr);
 	printSuperBlock(deneme);
 
-	fseek(file_ptr, sizeof(SuperBlock) + sizeof(iNode) + sizeof(iNode) + sizeof(iNode), SEEK_SET);
+	fseek(file_ptr, sizeof(SuperBlock) + sizeof(iNode), SEEK_SET);
 
 	iNode deneme2;
 	fread(&deneme2, sizeof(deneme2), 1, file_ptr);
@@ -108,16 +112,9 @@ int main(int argc, char *argv[])
 	}
 	cout << endl;
 
-	ChildParent deneme4;
-
-	fseek(file_ptr, deneme.block_position + deneme.block_size, SEEK_SET);
-	fread(&deneme4, sizeof(deneme4), 1, file_ptr);
-
-	cout << "child : " << deneme4.child_inode_id << endl;
-	cout << "parent : " << deneme4.parent_inode_id << endl;
 
 	Directory deneme5;
-	fseek(file_ptr, sizeof(ChildParent) + deneme.block_position, SEEK_SET);
+	fseek(file_ptr, deneme.block_position + sizeof(Directory) , SEEK_SET);
 	fread(&deneme5, sizeof(deneme5), 1, file_ptr);
 
 	cout << "i : " << deneme5.i_node_number << endl;
@@ -162,14 +159,12 @@ int list(FILE *file_ptr, char *path, char *must_be_null)
 int mkdir(FILE *file_ptr, char *path_and_dir, char *must_be_null)
 { 
 	// cout << "mkdir" << endl;
-	
 	if(path_and_dir == NULL || must_be_null != NULL)
 	{
 		cout << "File System Error!" << endl;
 		cout << "Runnable format is : mkdir [path and directory name]" << endl;
 		return -1;
 	}
-
 	// cout << "Path and directory name : " << path_and_dir << endl;
 
 	vector<char*> tokens = parse_string(path_and_dir);
@@ -187,8 +182,8 @@ int mkdir(FILE *file_ptr, char *path_and_dir, char *must_be_null)
 		fseek(file_ptr, 0, SEEK_SET);
 		fread(&sb, sizeof(sb), 1, file_ptr);
 
-		int free_inode_index = free_bitmap_inode_index(file_ptr, sb); // -1 error control
-		int free_block_index = free_bitmap_index(file_ptr, sb); // -1 error control
+		int free_inode_index = free_bitmap_inode_index(file_ptr, sb); // -1 error control // 0,1,2.. n-1
+		int free_block_index = free_bitmap_index(file_ptr, sb); // -1 error control // 0,1,2.. n-1
 
 		if(free_inode_index == -1 || free_block_index == -1)
 		{
@@ -199,19 +194,61 @@ int mkdir(FILE *file_ptr, char *path_and_dir, char *must_be_null)
 
 		if(tokens_size == 1)
 		{
-			// child_inode_id free_idone_index + 1
+			// child_inode_id free_idone_index + 1, i_node_id goes 1,2,3,...n 
 			// parent_inode_id root = 1 (parent_inode_id)
+			int new_i_node_addr = calculate_free_inode_addr(sb, free_inode_index);	// This is new free inode index for new dir or file
+			int new_block_addr = calculate_free_block_addr(sb, free_block_index);	// This is new free block index for new dir or file
+			vector<int> root_blocks_index = calculate_blocks_index(file_ptr, sb, 1);	// Finds the root's used block index
 
-			int new_i_node_addr = calculate_free_inode_addr(sb, free_inode_index);
-			int new_block_addr = calculate_free_block_addr(sb, free_block_index);
+			if(root_blocks_index.size() == DirectBlocksNum)
+			{
+				cout << "Direct blocks are full!" << endl;
+				cout << "There is no single, double and triple blocks yet" << endl;
+				return -1;
+			}
 
-			vector<int> root_blocks_addr = calculate_blocks_addr(file_ptr, sb, 1);
+			// Icinde bosluk olan blocun baslangic addresini donderir.
+			int usable_block_addr = find_block_addr_for_adding_file(file_ptr, sb, 1, root_blocks_index);
+			cout << "-->" << usable_block_addr << endl;
 
-			fseek(file_ptr, root_blocks_addr[0] + sizeof(ChildParent), SEEK_SET);
+			if(usable_block_addr == -1) // root direct_block needs new block 
+			{
+				cout << "LAN YENI BLOCK GEREK " << endl;
+				int new_index_for_root_block = free_bitmap_index_different_from_given(file_ptr, sb, free_block_index); // This is for current inode extra block 
 
-			int max_dir_in_block;
-			max_dir_in_block = (sb.block_size - sizeof(ChildParent)) / sizeof(Directory);
+				cout << "VERILEN BLOCK ID : " << new_index_for_root_block << endl;
+				if(new_index_for_root_block == -1)
+				{
+					cout << "File System Error!" << endl;
+					cout << "There is not enough block" << endl;
+					return -1;
+				}
+				// burada root un -1 olan yerini bul ve ona new_index_for_root_block ver 
+				// ve onun için addr hesapla usable_block_addr ata.
+				// ardından için current_dirc count bul ve o adrese ekleme yapıcaksın en aşağıda
 
+				fseek(file_ptr, sb.i_node_position, SEEK_SET); // root
+				iNode root_inode;
+				fread(&root_inode, sizeof(root_inode), 1, file_ptr);
+				int direct_block_index = find_direct_block_index(root_inode); // ilk -1 gordugu index i return eder
+				root_inode.direct_block[direct_block_index] = new_index_for_root_block; // yeni olusan block indexi atar
+				usable_block_addr = calculate_free_block_addr(sb, new_index_for_root_block); // yeni block index icin adres olusturur
+
+				cout << "YENI BLOCK ADRES " << usable_block_addr << endl;
+				fseek(file_ptr, sb.i_node_position, SEEK_SET); 
+				fwrite(&root_inode, sizeof(root_inode), 1, file_ptr);
+
+				fseek(file_ptr, sb.bitmap_position, SEEK_SET); 
+				BitMapBlock bmb;
+				fread(&bmb, sizeof(bmb), 1, file_ptr);
+				bmb.max_bitmap_block[new_index_for_root_block] = 1;
+				fseek(file_ptr, sb.bitmap_position, SEEK_SET);
+				fwrite(&bmb, sizeof(bmb), 1, file_ptr);
+
+			}
+//// Sadece ekleme yapacağı block için şuanlık
+			fseek(file_ptr, usable_block_addr, SEEK_SET); // directory ekleneme yapılacak block
+			int max_dir_in_block = calculate_max_dir_in_a_block(sb);
 			Directory dir_arr[max_dir_in_block];
 			int dir_count = 0;
 
@@ -222,7 +259,6 @@ int mkdir(FILE *file_ptr, char *path_and_dir, char *must_be_null)
 					break;
 				dir_count++;
 			}
-
 			for(int i = 0; i < dir_count; ++i)
 			{
 				if(strcmp(dir_arr[i].file_name, tokens[0]) == 0)
@@ -232,24 +268,21 @@ int mkdir(FILE *file_ptr, char *path_and_dir, char *must_be_null)
 					return -1;
 				}
 			}
-
+/////
 			// ====================================================
-			// new created directory //bit_map free_inode dolduır
+			// new created directory
 			fseek(file_ptr, new_i_node_addr, SEEK_SET);
-			ChildParent CP = { free_inode_index + 1 , 1 };
 			iNode new_i_node;
 			fread(&new_i_node, sizeof(new_i_node), 1, file_ptr);
 
 			new_i_node.i_node_id = free_inode_index + 1;
+			new_i_node.parent_inode_id = 1; // parent is root
 			new_i_node.type = 0;
 			strcpy(new_i_node.file_name, tokens[0]);
 			new_i_node.last_modification = time(0);
 			new_i_node.direct_block[0] = free_block_index;
 			fseek(file_ptr, new_i_node_addr, SEEK_SET);
 			fwrite(&new_i_node, sizeof(new_i_node), 1, file_ptr);
-
-			fseek(file_ptr, new_block_addr, SEEK_SET);
-			fwrite(&CP, sizeof(CP), 1, file_ptr);
 
 			fseek(file_ptr, sb.bitmap_position, SEEK_SET);
 			BitMapBlock bmb;
@@ -269,13 +302,18 @@ int mkdir(FILE *file_ptr, char *path_and_dir, char *must_be_null)
 
 			dir.i_node_number = new_i_node.i_node_id; 
 			strcpy(dir.file_name, new_i_node.file_name);
-			fseek(file_ptr, root_blocks_addr[0] + sizeof(ChildParent) + (dir_count * sizeof(Directory)), SEEK_SET);
+			fseek(file_ptr, usable_block_addr + (dir_count * sizeof(Directory)), SEEK_SET);
 			fwrite(&dir, sizeof(Directory), 1, file_ptr);
 			// ====================================================
 		}
 
 		else
 		{
+			fseek(file_ptr, sb.i_node_position, SEEK_SET);
+
+
+
+
 
 		}
 	}
@@ -431,6 +469,9 @@ vector<char*> parse_string(char *str)
 	vector<char*> tokens;
 	int seperator_count = 0;
 
+	if(str[0] != split[0])
+		return tokens;
+
 	strcat(str, "-");
 
 	char *each_word = strtok(str, split);
@@ -484,6 +525,21 @@ int free_bitmap_inode_index(FILE *file_ptr, SuperBlock sb)
 	return -1;
 }
 
+int free_bitmap_index_different_from_given(FILE *file_ptr, SuperBlock sb, int given_index)
+{
+	fseek(file_ptr, sb.bitmap_position, SEEK_SET);
+	BitMapBlock bmb;
+	fread(&bmb, sizeof(bmb), 1, file_ptr);
+
+	for(int i = 0; sb.amount_of_block; ++i)
+	{
+		if(bmb.max_bitmap_block[i] == 0 && i != given_index)
+			return i;
+	}
+
+	return -1;
+}
+
 int calculate_free_inode_addr(SuperBlock sb, int i_node_index)
 {
 	return (sb.i_node_position + (i_node_index * sizeof(iNode)));
@@ -494,25 +550,64 @@ int calculate_free_block_addr(SuperBlock sb, int block_index)
 	return (sb.block_position + (block_index * sb.block_size));
 }
 
-vector<int> calculate_blocks_addr(FILE *file_ptr, SuperBlock sb, int i_node_id)
+int calculate_max_dir_in_a_block(SuperBlock sb)
+{
+	return (sb.block_size / sizeof(Directory));
+}
+
+vector<int> calculate_blocks_index(FILE *file_ptr, SuperBlock sb, int i_node_id)
 {
 	int i_node_arr = calculate_free_inode_addr(sb, i_node_id - 1); // seraching inode addr; i_node id 1, 2, 3 .. n
 	fseek(file_ptr, i_node_arr, SEEK_SET);
 
-	int temp_addr;
-	vector<int> blocks_addr;
+	vector<int> blocks_index;
 	iNode i_node;
-	fread(&i_node, sizeof(i_node), 1, file_ptr);
+	fread(&i_node, sizeof(iNode), 1, file_ptr);
 
-	for(int i = 0; i_node.direct_block[i] != -1; ++i)
-	{
-		temp_addr = calculate_free_block_addr(sb, i_node.direct_block[i]);
-		blocks_addr.push_back(temp_addr);
-	}
-
-	return blocks_addr;
+	for(int i = 0; (i_node.direct_block[i] != -1) && (i < DirectBlocksNum); ++i)
+		blocks_index.push_back(i_node.direct_block[i]);
+	
+	return blocks_index;
 }
 
+int find_block_addr_for_adding_file(FILE *file_ptr, SuperBlock sb, int i_node_id, vector<int> blocks_index)
+{
+	int max_dir_count = calculate_max_dir_in_a_block(sb); // It means that a block holds at most this number of dir and file.
+
+	for(int i = 0; i < blocks_index.size(); ++i)
+	{
+		int block_addr = calculate_free_block_addr(sb, blocks_index[i]); // This is block addr of given block index
+
+		fseek(file_ptr, block_addr, SEEK_SET);
+
+		Directory dir_arr[max_dir_count];
+		int dir_count = 0;
+
+		for(int j = 0; j < max_dir_count; ++j)
+		{
+			fread(&dir_arr[j], sizeof(Directory), 1, file_ptr);
+			if(dir_arr[j].file_name[0] == '\0')
+				break;
+			dir_count++;
+		}
+
+		if(dir_count < max_dir_count)
+		{
+			int return_addr = block_addr;
+			return return_addr;
+		}
+	}
+	return -1;
+}
+
+int find_direct_block_index(iNode i_node)
+{
+	for(int i = 0; i < DirectBlocksNum; ++i)
+	{
+		if(i_node.direct_block[i] == -1)
+			return i;
+	}
+}
 
 void printSuperBlock(SuperBlock sb)
 {
@@ -534,6 +629,7 @@ void print_iNode(iNode i_node)
 {
 	cout << "================================" << endl;
 	cout << "i_node_id : " << i_node.i_node_id << endl;
+	cout << "parent_inode_id : " << i_node.parent_inode_id << endl;
 	cout << "size_of_file : " << i_node.size_of_file << endl;
 	cout << "type : " << i_node.type << endl;
 

@@ -129,13 +129,6 @@ int init_file_system(char *file_system, int block_size, int num_of_i_nodes)
 	}
 	cout << endl;
 
-	ChildParent deneme4;
-
-	fread(&deneme4, sizeof(deneme4), 1, file_ptr);
-
-	cout << "child : " << deneme4.child_inode_id << endl;
-	cout << "parent : " << deneme4.parent_inode_id << endl;
-
 	fclose(file_ptr);
 
 	return 1;
@@ -235,6 +228,7 @@ int init_root(char *file_system)
 	fread(&my_root, sizeof(my_root), 1, file_ptr);
 
 	my_root.i_node_id = 1;
+	my_root.parent_inode_id = 1;
 	my_root.type = 0; // directory
 	my_root.direct_block[0] = 0; // It means that first block of the system
 	my_root.last_modification = time(0);
@@ -255,11 +249,6 @@ int init_root(char *file_system)
 	bitmap_inode[0] = 1;
 	fseek(file_ptr, sb.bitmap_inode_positon, SEEK_SET);
 	fwrite(bitmap_inode, sizeof(bitmap_inode), 1, file_ptr);
-
-	ChildParent CP = { my_root.i_node_id, my_root.i_node_id }; // If block is for directory then put the child and parent directory id.
-
-	fseek(file_ptr, sb.block_position, SEEK_SET); // It is first block
-	fwrite(&CP, sizeof(CP), 1, file_ptr);
 
 	fclose(file_ptr);
 	return 1;
@@ -294,6 +283,7 @@ void print_iNode(iNode i_node)
 {
 	cout << "================================" << endl;
 	cout << "i_node_id : " << i_node.i_node_id << endl;
+	cout << "parent_inode_id : " << i_node.parent_inode_id << endl;
 	cout << "size_of_file : " << i_node.size_of_file << endl;
 	cout << "type : " << i_node.type << endl;
 
