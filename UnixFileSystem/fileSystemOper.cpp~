@@ -1,4 +1,12 @@
+#include <iostream>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <vector>
+
 #include "fileSystem.h"
+
+using namespace std;
 
 int is_regular_operation(char *op);
 int list(FILE *file_ptr, char *path, char *must_be_null);
@@ -81,7 +89,7 @@ int main(int argc, char *argv[])
 	}
 	fclose(file_ptr);
 
-	silinecekFonk(file_system);
+	// silinecekFonk(file_system);
 
 	return 0;
 }
@@ -853,5 +861,4 @@ void printSizeOfStructs()
 	cout << "BitMapBlock : " << sizeof(BitMapBlock) << endl;
 	cout << "================================" << endl;
 }
-
 
