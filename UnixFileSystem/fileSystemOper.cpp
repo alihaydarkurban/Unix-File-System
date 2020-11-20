@@ -18,7 +18,7 @@ int free_bitmap_inode_index(FILE *file_ptr, SuperBlock sb);
 int calculate_inode_addr(SuperBlock sb, int i_node_index);
 int calculate_block_addr(SuperBlock sb, int block_index);
 bool same_name_check(FILE *file_ptr, int i_node_id, char *name, int type_of_it);
-int find_inode_id(FILE *file_ptr, int i_node_id, char *name, int type_of_it);
+bool find_parent_inode_id(FILE *file_ptr, int i_node_id, char *name, int type_of_it, int *inode_id_ptr);
 int calculate_dir_or_file_in_a_block(FILE *file_ptr, SuperBlock sb, int block_addr);
 int calculate_max_dir_or_file_in_a_block(SuperBlock sb);
 vector<int> calculate_blocks_index(FILE *file_ptr, SuperBlock sb, int i_node_id);
@@ -26,6 +26,9 @@ int find_block_addr_for_adding_file(FILE *file_ptr, SuperBlock sb, int i_node_id
 int free_bitmap_index_different_from_given(FILE *file_ptr, SuperBlock sb, int given_index);
 int find_direct_block_index(iNode i_node);
 void list_print_given_id(FILE *file_ptr, SuperBlock sb, int i_node_id);
+int find_used_inode_addr(FILE *file_ptr, SuperBlock sb, int used_inode_addr[]);
+void set_parent_inode_last_modification(FILE *file_ptr, SuperBlock sb, int i_node_id, time_t time);
+bool is_it_a_parent_inode(FILE *file_ptr, SuperBlock sb, int i_node_id);
 
 
 // print fonks....
@@ -39,7 +42,7 @@ void silinecekFonk(char *file_system);
 int main(int argc, char *argv[])
 {
 	int operation_index;
-	char file_system[FileNameLength];
+	char file_system[MAX_PATH_SIZE];
 
 	if(argc < 3 || argc > 5)
 	{
@@ -142,7 +145,7 @@ int list(FILE *file_ptr, char *path, char *must_be_null)
 		cout << "Runnable format is : list [path]" << endl;
 		return -1;
 	}
-	char real_path[FileNameLength];
+	char real_path[MAX_PATH_SIZE];
 	strcpy(real_path, path);
 
 	vector<char*> tokens = parse_string(path);
@@ -160,25 +163,23 @@ int list(FILE *file_ptr, char *path, char *must_be_null)
 		int parent_id = 1; 
 		for(int i = 0; i < tokens_size; ++i)
 		{
-
-			bool control = same_name_check(file_ptr, parent_id, tokens[i], 0);
+			int current_parent_id;
+			bool control = find_parent_inode_id(file_ptr, parent_id, tokens[i], 0, &current_parent_id);
 			if(control == false)
 			{
 				cout << "File System Error!" << endl;
 				cout << "There is no path like : " << real_path << endl;
 				return -1;
 			}
-			int current_parent_id;
-			current_parent_id = find_inode_id(file_ptr, parent_id, tokens[i], 0);
 			parent_id = current_parent_id;
 		}
-		list_print_given_id(file_ptr, sb, parent_id); // root
+		list_print_given_id(file_ptr, sb, parent_id); // other parent
 	}
 
 	else
 	{
 		cout << "File System Error!" << endl;
-		cout << "Not correct path naming" << endl;
+		cout << "Not correct path naming : " <<  real_path << endl;
 		return -1;
 	}
 
@@ -194,9 +195,8 @@ int mkdir(FILE *file_ptr, char *path_and_dir, char *must_be_null)
 		return -1;
 	}
 
-	char real_path_and_dir[FileNameLength];
+	char real_path_and_dir[MAX_PATH_SIZE];
 	strcpy(real_path_and_dir, path_and_dir);
-
 
 	vector<char*> tokens = parse_string(path_and_dir); // Parsing the path
 	int tokens_size = tokens.size();
@@ -204,7 +204,7 @@ int mkdir(FILE *file_ptr, char *path_and_dir, char *must_be_null)
 	if(tokens_size == 0)
 	{
 		cout << "File System Error!" << endl;
-		cout << "Not correct path and directory naming" << endl;
+		cout << "Not correct path and directory naming : " << real_path_and_dir << endl;
 		return -1;
 	}
 
@@ -228,15 +228,14 @@ int mkdir(FILE *file_ptr, char *path_and_dir, char *must_be_null)
 	// And this means that you will add the root directory.
 	for(int i = 0; i < tokens_size - 1; ++i)
 	{
-		bool control = same_name_check(file_ptr, parent_id, tokens[i], 0);
+		int current_parent_id;
+		bool control = find_parent_inode_id(file_ptr, parent_id, tokens[i], 0, &current_parent_id);
 		if(control == false)
 		{
 			cout << "File System Error!" << endl;
 			cout << "There is no path like : " << real_path_and_dir << endl;
 			return -1;
 		}
-		int current_parent_id;
-		current_parent_id = find_inode_id(file_ptr, parent_id, tokens[i], 0);
 		parent_id = current_parent_id;
 	}
 
@@ -249,7 +248,9 @@ int mkdir(FILE *file_ptr, char *path_and_dir, char *must_be_null)
 
 	cout << "ROOT_BLOCKSIZE : "<< parent_blocks_index.size() << endl;
 
-	if(parent_blocks_index.size() == DirectBlocksNum) // If the direct blocks are full
+	int usable_block_addr = find_block_addr_for_adding_file(file_ptr, sb, parent_id, parent_blocks_index);
+
+	if(parent_blocks_index.size() == DirectBlocksNum && usable_block_addr == -1) // If the direct blocks are full
 	{
 		cout << "Direct blocks are full!" << endl;
 		cout << "There is no single, double and triple blocks yet" << endl;
@@ -258,7 +259,7 @@ int mkdir(FILE *file_ptr, char *path_and_dir, char *must_be_null)
 
 	// find_block_addr_for_adding_file find the first useable block addr.
 	// It returns -1 if the parent inode needs new block.
-	int usable_block_addr = find_block_addr_for_adding_file(file_ptr, sb, parent_id, parent_blocks_index);
+	// int usable_block_addr = find_block_addr_for_adding_file(file_ptr, sb, parent_id, parent_blocks_index);
 	cout << "-->" << usable_block_addr << endl;
 
 	if(usable_block_addr == -1) // parent inode's direct_block needs new block 
@@ -335,12 +336,13 @@ int mkdir(FILE *file_ptr, char *path_and_dir, char *must_be_null)
 	// ====================================================
 
 	// ====================================================
-	// add directory structor inside the parent (parent' in last modifiye tarihini degistirmen gerekebilir)
+	// add directory structor inside the parent
 	Directory dir;
 	dir.i_node_number = new_i_node.i_node_id; 
 	strcpy(dir.file_name, new_i_node.file_name);
 	fseek(file_ptr, usable_block_addr + (dir_count * sizeof(Directory)), SEEK_SET);
 	fwrite(&dir, sizeof(Directory), 1, file_ptr);
+	set_parent_inode_last_modification(file_ptr, sb, parent_id, time(0));
 	// ====================================================
 
 	return 1;
@@ -357,9 +359,78 @@ int rmdir(FILE *file_ptr, char *path_and_dir, char *must_be_null)
 		return -1;
 	}
 
-	cout << "It is OK to run" << endl;
-	cout << "Path and directory name : " << path_and_dir << endl;
+	SuperBlock sb;
+	fseek(file_ptr, 0, SEEK_SET);
+	fread(&sb, sizeof(sb), 1, file_ptr);
 
+	char real_path_and_dir[MAX_PATH_SIZE];
+	strcpy(real_path_and_dir, path_and_dir);
+
+	vector<char*> tokens = parse_string(path_and_dir); // Parsing the path
+	int tokens_size = tokens.size();
+
+	if(real_path_and_dir[0] == split[0] && strlen(real_path_and_dir) == 1) // root can not be deleted!!
+	{
+		cout << "File System Error!" << endl;
+		cout << "Root directory can not be deleted" << endl;
+		return -1;
+	}
+
+	if(tokens_size == 0)
+	{
+		cout << "File System Error!" << endl;
+		cout << "Not correct path and directory naming : " << real_path_and_dir << endl;
+		return -1;
+	}
+
+	int parent_id = 1; 
+	for(int i = 0; i < tokens_size; ++i)
+	{
+		int current_parent_id;
+		bool control = find_parent_inode_id(file_ptr, parent_id, tokens[i], 0, &current_parent_id);
+		if(control == false)
+		{
+			cout << "File System Error!" << endl;
+			cout << "There is no path like : " << real_path_and_dir << endl;
+			return -1;
+		}
+		parent_id = current_parent_id;
+	}
+	bool is_parent = is_it_a_parent_inode(file_ptr, sb, parent_id);
+
+	if(is_parent == true)
+	{
+		cout << "File System Error!" << endl;
+		cout << "The \""<< tokens[tokens_size - 1] << "\" is not empty" << endl;
+		return -1;
+	}
+
+	int parent_inode_position = calculate_inode_addr(sb, parent_id - 1);
+	
+	// cout << "----> : " << parent_id << endl;
+
+	fseek(file_ptr, parent_inode_position, SEEK_SET);
+	iNode inode;
+	fread(&inode, sizeof(iNode), 1, file_ptr);
+	int deleted_index_in_direct_block = inode.direct_block[0];
+	inode.direct_block[0] = -1;
+	// cout << "inode_id : " << inode.i_node_id << endl;
+	// cout << "parent : " << inode.parent_inode_id << endl;
+	// cout << "f.name : " << inode.file_name << endl;
+
+	fseek(file_ptr, parent_inode_position, SEEK_SET);
+	fwrite(&inode, sizeof(iNode), 1, file_ptr);
+
+	fseek(file_ptr, sb.bitmap_position, SEEK_SET);
+	BitMapBlock bmb;
+	fread(&bmb, sizeof(BitMapBlock), 1, file_ptr);
+	bmb.max_bitmap_block[deleted_index_in_direct_block] = 0;
+	fseek(file_ptr, sb.bitmap_position, SEEK_SET);
+	fwrite(&bmb, sizeof(BitMapBlock), 1, file_ptr);
+
+	fseek(file_ptr, sb.bitmap_inode_positon + (sizeof(int) * (parent_id - 1)), SEEK_SET);
+	int empty = 0;
+	fwrite(&empty, sizeof(int), 1, file_ptr);
 
 	return 1;
 }
@@ -395,6 +466,8 @@ int write(FILE *file_ptr, char *path, char *file)
 	cout << "Path name : " << path << endl;
 	cout << "File name : " << file << endl;
 
+
+	// dosya eklenince size ile alakali biseyler yapman gerekecek
 
 	return 1;
 }
@@ -568,24 +641,8 @@ bool same_name_check(FILE *file_ptr, int i_node_id, char *name, int type_of_it)
 	SuperBlock sb;
 	fread(&sb, sizeof(sb), 1, file_ptr);
 
-	int used_inode_count = 0;
-	vector<int> index_of_used_inodes;
-	fseek(file_ptr, sb.bitmap_inode_positon, SEEK_SET);
-
-	int bm_inode;
-	for(int i = 0; i < sb.amount_of_i_nodes; ++i)
-	{
-		fread(&bm_inode, sizeof(bm_inode), 1, file_ptr);
-		if(bm_inode != 0)
-		{
-			index_of_used_inodes.push_back(i);
-			used_inode_count++;
-		}
-	}
-	int used_inode_addr[used_inode_count];
-
-	for(int i = 0; i < used_inode_count; ++i)
-		used_inode_addr[i] = calculate_inode_addr(sb, index_of_used_inodes[i]);
+	int used_inode_addr[sb.amount_of_i_nodes];
+	int used_inode_count = find_used_inode_addr(file_ptr, sb, used_inode_addr);
 
 	iNode inode_arr[used_inode_count];
 
@@ -602,31 +659,15 @@ bool same_name_check(FILE *file_ptr, int i_node_id, char *name, int type_of_it)
 	return false;
 }
 
-int find_inode_id(FILE *file_ptr, int i_node_id, char *name, int type_of_it)
+bool find_parent_inode_id(FILE *file_ptr, int i_node_id, char *name, int type_of_it, int *inode_id_ptr)
 {
 	fseek(file_ptr, 0, SEEK_SET);
 
 	SuperBlock sb;
 	fread(&sb, sizeof(sb), 1, file_ptr);
 
-	int used_inode_count = 0;
-	vector<int> index_of_used_inodes;
-	fseek(file_ptr, sb.bitmap_inode_positon, SEEK_SET);
-
-	int bm_inode;
-	for(int i = 0; i < sb.amount_of_i_nodes; ++i)
-	{
-		fread(&bm_inode, sizeof(bm_inode), 1, file_ptr);
-		if(bm_inode != 0)
-		{
-			index_of_used_inodes.push_back(i);
-			used_inode_count++;
-		}
-	}
-	int used_inode_addr[used_inode_count];
-
-	for(int i = 0; i < used_inode_count; ++i)
-		used_inode_addr[i] = calculate_inode_addr(sb, index_of_used_inodes[i]);
+	int used_inode_addr[sb.amount_of_i_nodes];
+	int used_inode_count = find_used_inode_addr(file_ptr, sb, used_inode_addr);
 
 	iNode inode_arr[used_inode_count];
 
@@ -638,9 +679,12 @@ int find_inode_id(FILE *file_ptr, int i_node_id, char *name, int type_of_it)
 		if(inode_arr[i].parent_inode_id == i_node_id && 
 			inode_arr[i].type == type_of_it &&
 			strcmp(inode_arr[i].file_name, name) == 0)
-			return  inode_arr[i].i_node_id;
+		{
+			*inode_id_ptr = inode_arr[i].i_node_id; // This is return value with pointer
+			return true;
+		}
 	}
-	return -1;
+	return false;
 }
 
 int free_bitmap_index_different_from_given(FILE *file_ptr, SuperBlock sb, int given_index)
@@ -727,24 +771,8 @@ int find_direct_block_index(iNode i_node)
 
 void list_print_given_id(FILE *file_ptr, SuperBlock sb, int i_node_id)
 {
-	int used_inode_count = 0;
-	vector<int> index_of_used_inodes;
-	fseek(file_ptr, sb.bitmap_inode_positon, SEEK_SET);
-
-	int bm_inode;
-	for(int i = 0; i < sb.amount_of_i_nodes; ++i)
-	{
-		fread(&bm_inode, sizeof(bm_inode), 1, file_ptr);
-		if(bm_inode != 0)
-		{
-			index_of_used_inodes.push_back(i);
-			used_inode_count++;
-		}
-	}
-	int used_inode_addr[used_inode_count];
-
-	for(int i = 0; i < used_inode_count; ++i)
-		used_inode_addr[i] = calculate_inode_addr(sb, index_of_used_inodes[i]);
+	int used_inode_addr[sb.amount_of_i_nodes];
+	int used_inode_count = find_used_inode_addr(file_ptr, sb, used_inode_addr);
 
 	iNode inode_arr[used_inode_count];
 
@@ -770,6 +798,59 @@ void list_print_given_id(FILE *file_ptr, SuperBlock sb, int i_node_id)
 	}
 }
 
+int find_used_inode_addr(FILE *file_ptr, SuperBlock sb, int used_inode_addr[])
+{
+	int used_inode_count = 0;
+	vector<int> index_of_used_inodes;
+	fseek(file_ptr, sb.bitmap_inode_positon, SEEK_SET);
+
+	int bm_inode;
+	for(int i = 0; i < sb.amount_of_i_nodes; ++i)
+	{
+		fread(&bm_inode, sizeof(bm_inode), 1, file_ptr);
+		if(bm_inode != 0)
+		{
+			index_of_used_inodes.push_back(i);
+			used_inode_count++;
+		}
+	}
+
+	for(int i = 0; i < used_inode_count; ++i)
+		used_inode_addr[i] = calculate_inode_addr(sb, index_of_used_inodes[i]);
+
+	return used_inode_count;
+}
+
+void set_parent_inode_last_modification(FILE *file_ptr, SuperBlock sb, int i_node_id, time_t time)
+{
+	iNode inode;
+
+	int inode_addr = calculate_inode_addr(sb, i_node_id - 1);
+	fseek(file_ptr, inode_addr, SEEK_SET);
+	fread(&inode, sizeof(iNode), 1, file_ptr);
+	inode.last_modification = time;
+	fseek(file_ptr, inode_addr, SEEK_SET);
+	fwrite(&inode, sizeof(iNode), 1, file_ptr);
+}
+
+bool is_it_a_parent_inode(FILE *file_ptr, SuperBlock sb, int i_node_id)
+{
+	int used_inode_addr[sb.amount_of_i_nodes];
+	int used_inode_count = find_used_inode_addr(file_ptr, sb, used_inode_addr);
+
+	iNode inode_arr[used_inode_count];
+
+	for(int i = 0; i < used_inode_count; ++i)
+	{
+		fseek(file_ptr, used_inode_addr[i], SEEK_SET);
+		fread(&inode_arr[i], sizeof(iNode), 1, file_ptr);
+
+		if(inode_arr[i].parent_inode_id == i_node_id)
+			return true;
+	}
+	return false;
+}
+
 
 
 void printSuperBlock(SuperBlock sb)
@@ -790,7 +871,6 @@ void printSuperBlock(SuperBlock sb)
 
 void print_iNode(FILE *file_ptr, SuperBlock sb)
 {
-
 	int used_inode_count = 0;
 	vector<int> index_of_used_inodes;
 	fseek(file_ptr, sb.bitmap_inode_positon, SEEK_SET);

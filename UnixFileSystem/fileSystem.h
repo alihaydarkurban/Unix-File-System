@@ -10,6 +10,7 @@
 
 using namespace std;
 
+#define MAX_PATH_SIZE 512
 #define SuperBlockItems 7
 #define DirectBlocksNum 10
 #define _1KB 1024 // 1 kilobyte = 1024 bytes
@@ -65,6 +66,5 @@ struct BitMapBlock
 {
 	int max_bitmap_block[_1KB]; // 0 means that empty, 1 means that full -1 means that end
 };
-
 
 #endif
