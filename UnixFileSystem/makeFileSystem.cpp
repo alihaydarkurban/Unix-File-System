@@ -93,7 +93,7 @@ int init_file_system(char *file_system, int block_size, int num_of_i_nodes)
 
 	init_root(file_system); // Create root directory
 
-	silinecekFonk(file_system); // bunu en son sil
+	// silinecekFonk(file_system); // bunu en son sil
 
 	return 1;
 }

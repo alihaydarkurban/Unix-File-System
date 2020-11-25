@@ -1104,4 +1104,3 @@ void printSizeOfStructs()
 	cout << "BitMapBlock : " << sizeof(BitMapBlock) << endl;
 	cout << "================================" << endl;
 }
-
