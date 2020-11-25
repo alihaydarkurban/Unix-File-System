@@ -29,6 +29,13 @@ void list_print_given_id(FILE *file_ptr, SuperBlock sb, int i_node_id);
 int find_used_inode_addr(FILE *file_ptr, SuperBlock sb, int used_inode_addr[]);
 void set_parent_inode_last_modification(FILE *file_ptr, SuperBlock sb, int i_node_id, time_t time);
 bool is_it_a_parent_inode(FILE *file_ptr, SuperBlock sb, int i_node_id);
+int calculate_free_inode_count(FILE *file_ptr, SuperBlock sb);
+int calculate_free_block_count(FILE *file_ptr, SuperBlock sb);
+void calculate_director_and_file_count(FILE *file_ptr, SuperBlock sb, int* dir_countP, int *file_countP);
+int first_place_to_add_directory_structor(FILE *file_ptr, SuperBlock sb, int block_addr);
+void clean_the_removed_directory_space(FILE *file_ptr, SuperBlock sb, vector<int> other_parent_id_blocks_index, Directory removed_dir);
+int find_place_of_directory(FILE *file_ptr, SuperBlock sb, int block_addr, Directory dir);
+
 
 
 // print fonks....
@@ -84,7 +91,7 @@ int main(int argc, char *argv[])
 	}
 	fclose(file_ptr);
 
-	silinecekFonk(file_system);
+	// silinecekFonk(file_system);
 
 	return 0;
 }
@@ -306,7 +313,7 @@ int mkdir(FILE *file_ptr, char *path_and_dir, char *must_be_null)
 		return -1;
 	}
 
-	int dir_count = calculate_dir_or_file_in_a_block(file_ptr, sb, usable_block_addr);
+	int dir_count = first_place_to_add_directory_structor(file_ptr, sb, usable_block_addr);
 
 	// ====================================================
 	// new created directory
@@ -383,7 +390,9 @@ int rmdir(FILE *file_ptr, char *path_and_dir, char *must_be_null)
 		return -1;
 	}
 
+	int other_parent_id = 1; 
 	int parent_id = 1; 
+	// cout << "tokens_size : " << tokens_size << endl; 
 	for(int i = 0; i < tokens_size; ++i)
 	{
 		int current_parent_id;
@@ -395,6 +404,11 @@ int rmdir(FILE *file_ptr, char *path_and_dir, char *must_be_null)
 			return -1;
 		}
 		parent_id = current_parent_id;
+		if(i == (tokens_size - 2))
+		{
+			// cout << "token : " << tokens[i] << endl;
+			other_parent_id = parent_id;
+		}
 	}
 	bool is_parent = is_it_a_parent_inode(file_ptr, sb, parent_id);
 
@@ -407,7 +421,8 @@ int rmdir(FILE *file_ptr, char *path_and_dir, char *must_be_null)
 
 	int parent_inode_position = calculate_inode_addr(sb, parent_id - 1);
 	
-	// cout << "----> : " << parent_id << endl;
+	cout << "OTHER PARENT ID : " << other_parent_id << endl;  //4
+	cout << "----> : " << parent_id << endl; //7
 
 	fseek(file_ptr, parent_inode_position, SEEK_SET);
 	iNode inode;
@@ -432,6 +447,14 @@ int rmdir(FILE *file_ptr, char *path_and_dir, char *must_be_null)
 	int empty = 0;
 	fwrite(&empty, sizeof(int), 1, file_ptr);
 
+	// other_parent_id operations
+	vector<int> other_parent_id_blocks_index = calculate_blocks_index(file_ptr, sb, other_parent_id);
+	Directory removed_dir;
+	removed_dir.i_node_number = parent_id;
+	strcpy(removed_dir.file_name, tokens[tokens_size - 1]);
+	clean_the_removed_directory_space(file_ptr, sb, other_parent_id_blocks_index, removed_dir);
+	set_parent_inode_last_modification(file_ptr, sb, other_parent_id, time(0));
+
 	return 1;
 }
 
@@ -445,8 +468,36 @@ int dumpe2fs(FILE *file_ptr, char *must_be_null1, char *must_be_null2)
 		cout << "Runnable format is : dumpe2fs" << endl;
 		return -1;
 	}
-	cout << "It is OK to run" << endl;
+	
+	SuperBlock sb;
+	fseek(file_ptr, 0, SEEK_SET);
+	fread(&sb, sizeof(SuperBlock), 1, file_ptr);
 
+	int total_block_count = sb.amount_of_block;
+	int total_inode_count = sb.amount_of_i_nodes;
+	int block_size = sb.block_size;
+	int free_inode_count = calculate_free_inode_count(file_ptr, sb);
+	int free_block_count = calculate_free_block_count(file_ptr, sb);	
+	int dir_count = 0, file_count = 0;
+	calculate_director_and_file_count(file_ptr, sb, &dir_count, &file_count);
+
+
+	cout << "B : " << total_block_count << endl;
+	cout << "I : " << total_inode_count << endl;
+	cout << "FB : " << free_block_count << endl;
+	cout << "FI : " << free_inode_count << endl;
+	cout << "D : " << dir_count << endl;
+	cout << "F : " << file_count << endl;
+	cout << "BS: " << block_size << endl;
+
+	// list block count (Total)
+	// i-node count (Total)
+	// free i-node count
+	// free block count
+	// numbers of file
+	// numbers of directory
+	// block size
+	// used inodes
 
 	return 1;
 }
@@ -557,7 +608,20 @@ int fsck(FILE *file_ptr, char *must_be_null1, char *must_be_null2)
 		cout << "Runnable format is : fsck" << endl;
 		return -1;
 	}
-	cout << "It is OK to run" << endl;
+	
+	SuperBlock sb;
+	fseek(file_ptr, 0, SEEK_SET);
+	fread(&sb, sizeof(sb), 1, file_ptr);
+
+	cout << sb.amount_of_block << endl;
+	cout << sb.amount_of_i_nodes << endl;
+
+	int free_block_arr[sb.amount_of_block];
+	int used_block_arr[sb.amount_of_block];
+
+	int free_inode_arr[sb.amount_of_i_nodes];
+	int used_inode_arr[sb.amount_of_i_nodes];
+
 
 
 	return 1;
@@ -602,7 +666,7 @@ int free_bitmap_block_index(FILE *file_ptr, SuperBlock sb)
 	BitMapBlock bmb;
 	fread(&bmb, sizeof(bmb), 1, file_ptr);
 
-	for(int i = 0; sb.amount_of_block; ++i)
+	for(int i = 0; i < sb.amount_of_block; ++i)
 	{
 		if(bmb.max_bitmap_block[i] == 0)
 			return i;
@@ -693,7 +757,7 @@ int free_bitmap_index_different_from_given(FILE *file_ptr, SuperBlock sb, int gi
 	BitMapBlock bmb;
 	fread(&bmb, sizeof(bmb), 1, file_ptr);
 
-	for(int i = 0; sb.amount_of_block; ++i)
+	for(int i = 0; i < sb.amount_of_block; ++i)
 	{
 		if(bmb.max_bitmap_block[i] == 0 && i != given_index)
 			return i;
@@ -702,7 +766,7 @@ int free_bitmap_index_different_from_given(FILE *file_ptr, SuperBlock sb, int gi
 	return -1;
 }
 
-int calculate_dir_or_file_in_a_block(FILE *file_ptr, SuperBlock sb, int block_addr)
+int calculate_dir_or_file_in_a_block(FILE *file_ptr, SuperBlock sb, int block_addr) // Total directory count of given block addr
 {
 	fseek(file_ptr, block_addr, SEEK_SET); // Makes the file_ptr the begining of addable block
 
@@ -714,9 +778,8 @@ int calculate_dir_or_file_in_a_block(FILE *file_ptr, SuperBlock sb, int block_ad
 	for(int i = 0; i < max_dir_in_block; ++i)
 	{
 		fread(&dir_arr[i], sizeof(Directory), 1, file_ptr);
-		if(dir_arr[i].file_name[0] == '\0')
-			break;
-		dir_count++;
+		if(dir_arr[i].file_name[0] != '\0' && dir_arr[i].file_name[0] != '-')
+			dir_count++;
 	}
 	return dir_count;
 }
@@ -758,6 +821,26 @@ int find_block_addr_for_adding_file(FILE *file_ptr, SuperBlock sb, int i_node_id
 		}
 	}
 	return -1;
+}
+
+int first_place_to_add_directory_structor(FILE *file_ptr, SuperBlock sb, int block_addr) // First empty place for directory
+{
+	fseek(file_ptr, block_addr, SEEK_SET); // Makes the file_ptr the begining of addable block
+
+	int max_dir_in_block = calculate_max_dir_or_file_in_a_block(sb); // This returns the max number of having directory or file in a block 
+	
+	Directory dir_arr[max_dir_in_block];
+	int dir_count = 0;
+
+	for(int i = 0; i < max_dir_in_block; ++i)
+	{
+		fread(&dir_arr[i], sizeof(Directory), 1, file_ptr);
+		if(dir_arr[i].file_name[0] == '\0' || dir_arr[i].file_name[0] == '-')
+			break;
+		dir_count++;
+	}
+	return dir_count;
+
 }
 
 int find_direct_block_index(iNode i_node)
@@ -851,7 +934,95 @@ bool is_it_a_parent_inode(FILE *file_ptr, SuperBlock sb, int i_node_id)
 	return false;
 }
 
+int calculate_free_inode_count(FILE *file_ptr, SuperBlock sb)
+{
+	int count = 0;
+	int free_inode;
+	fseek(file_ptr, sb.bitmap_inode_positon, SEEK_SET);
 
+	for(int i = 0; i < sb.amount_of_i_nodes; ++i)
+	{
+		fread(&free_inode, sizeof(free_inode), 1, file_ptr);
+		if(free_inode == 0)
+			count++;
+	}
+	return count;
+}
+
+int calculate_free_block_count(FILE *file_ptr, SuperBlock sb)
+{
+	int count = 0;
+	fseek(file_ptr, sb.bitmap_position, SEEK_SET);
+	BitMapBlock bmb;
+	fread(&bmb, sizeof(bmb), 1, file_ptr);
+
+	for(int i = 0; i < sb.amount_of_block; ++i)
+	{
+		if(bmb.max_bitmap_block[i] == 0)
+			count++;
+	}
+	return count;
+}
+
+void calculate_director_and_file_count(FILE *file_ptr, SuperBlock sb, int* dir_countP, int *file_countP)
+{
+	int used_inode_addr[sb.amount_of_i_nodes];
+	int used_inode_count = find_used_inode_addr(file_ptr, sb, used_inode_addr);
+
+	iNode inode_arr[used_inode_count];
+
+	for(int i = 0; i < used_inode_count; ++i)
+	{
+		fseek(file_ptr, used_inode_addr[i], SEEK_SET);
+		fread(&inode_arr[i], sizeof(iNode), 1, file_ptr);
+
+		if(inode_arr[i].type == 0) // directory
+			*dir_countP = *dir_countP + 1;
+		else if(inode_arr[i].type == 1)
+			*file_countP = *file_countP + 1;
+	}
+}
+
+void clean_the_removed_directory_space(FILE *file_ptr, SuperBlock sb, vector<int> other_parent_id_blocks_index, Directory removed_dir)
+{
+	int max_dir_count = calculate_max_dir_or_file_in_a_block(sb); // It means that a block holds at most this number of dir and file.
+
+	int block_addr;
+	int dir_count;
+	
+	for(int i = 0; i < other_parent_id_blocks_index.size(); ++i)
+	{
+		block_addr = calculate_block_addr(sb, other_parent_id_blocks_index[i]); // This is block addr of given block index
+
+		dir_count = find_place_of_directory(file_ptr, sb, block_addr, removed_dir);
+	}
+
+	fseek(file_ptr, block_addr + (dir_count * sizeof(Directory)), SEEK_SET);
+	Directory empty;
+	empty.i_node_number = 0;
+	char name[FileNameLength] = "-";
+	strcpy(empty.file_name, name);
+	fwrite(&empty, sizeof(Directory), 1, file_ptr);
+}
+
+int find_place_of_directory(FILE *file_ptr, SuperBlock sb, int block_addr, Directory dir)
+{
+	fseek(file_ptr, block_addr, SEEK_SET); // Makes the file_ptr the begining of addable block
+
+	int max_dir_in_block = calculate_max_dir_or_file_in_a_block(sb); // This returns the max number of having directory or file in a block 
+	
+	Directory dir_arr[max_dir_in_block];
+	int dir_count = 0;
+
+	for(int i = 0; i < max_dir_in_block; ++i)
+	{
+		fread(&dir_arr[i], sizeof(Directory), 1, file_ptr);
+		if((strcmp(dir_arr[i].file_name, dir.file_name) == 0) && (dir_arr[i].i_node_number == dir.i_node_number))
+			break;
+		dir_count++;
+	}
+	return dir_count;
+}
 
 void printSuperBlock(SuperBlock sb)
 {
@@ -933,5 +1104,4 @@ void printSizeOfStructs()
 	cout << "BitMapBlock : " << sizeof(BitMapBlock) << endl;
 	cout << "================================" << endl;
 }
-
 
