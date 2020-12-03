@@ -27,7 +27,7 @@ int free_bitmap_index_different_from_given(FILE *file_ptr, SuperBlock sb, int gi
 int find_direct_block_index(iNode i_node);
 void list_print_given_id(FILE *file_ptr, SuperBlock sb, int i_node_id);
 int find_used_inode_addr(FILE *file_ptr, SuperBlock sb, int used_inode_addr[]);
-void set_parent_inode_last_modification(FILE *file_ptr, SuperBlock sb, int i_node_id, time_t time);
+void set_last_modification(FILE *file_ptr, SuperBlock sb, int i_node_id, time_t time);
 bool is_it_a_parent_inode(FILE *file_ptr, SuperBlock sb, int i_node_id);
 int calculate_free_inode_count(FILE *file_ptr, SuperBlock sb);
 int calculate_free_block_count(FILE *file_ptr, SuperBlock sb);
@@ -35,8 +35,8 @@ void calculate_director_and_file_count(FILE *file_ptr, SuperBlock sb, int* dir_c
 int first_place_to_add_directory_structor(FILE *file_ptr, SuperBlock sb, int block_addr);
 void clean_the_removed_directory_space(FILE *file_ptr, SuperBlock sb, vector<int> other_parent_id_blocks_index, Directory removed_dir);
 int find_place_of_directory(FILE *file_ptr, SuperBlock sb, int block_addr, Directory dir);
-
-
+void fill_array_with_zeros(int arr[], int size);
+void set_size_for_directory(FILE *file_ptr, SuperBlock sb, int i_node_id, int used_block_count);
 
 // print fonks....
 void printSuperBlock(SuperBlock sb);
@@ -215,6 +215,15 @@ int mkdir(FILE *file_ptr, char *path_and_dir, char *must_be_null)
 		return -1;
 	}
 
+	char ch[FileNameLength];
+	strcpy(ch, tokens[tokens_size - 1]); 
+	if(ch[0] == '-')
+	{
+		cout << "File System Error!" << endl;
+		cout << "It can not be a file name : " << real_path_and_dir << endl;
+		return -1;
+	}
+
 	SuperBlock sb;
 	fseek(file_ptr, 0, SEEK_SET);
 	fread(&sb, sizeof(sb), 1, file_ptr);
@@ -253,6 +262,7 @@ int mkdir(FILE *file_ptr, char *path_and_dir, char *must_be_null)
 	int new_block_addr = calculate_block_addr(sb, free_block_index);	// This is new free block index for new dir or file
 	vector<int> parent_blocks_index = calculate_blocks_index(file_ptr, sb, parent_id);	// Finds the parent's used blocks index
 
+	int used_block_count = parent_blocks_index.size();
 	cout << "ROOT_BLOCKSIZE : "<< parent_blocks_index.size() << endl;
 
 	int usable_block_addr = find_block_addr_for_adding_file(file_ptr, sb, parent_id, parent_blocks_index);
@@ -327,6 +337,7 @@ int mkdir(FILE *file_ptr, char *path_and_dir, char *must_be_null)
 	strcpy(new_i_node.file_name, tokens[tokens_size - 1]);
 	new_i_node.last_modification = time(0);
 	new_i_node.direct_block[0] = free_block_index;
+	new_i_node.size_of_file = sb.block_size;
 	fseek(file_ptr, new_i_node_addr, SEEK_SET);
 	fwrite(&new_i_node, sizeof(new_i_node), 1, file_ptr);
 
@@ -349,7 +360,8 @@ int mkdir(FILE *file_ptr, char *path_and_dir, char *must_be_null)
 	strcpy(dir.file_name, new_i_node.file_name);
 	fseek(file_ptr, usable_block_addr + (dir_count * sizeof(Directory)), SEEK_SET);
 	fwrite(&dir, sizeof(Directory), 1, file_ptr);
-	set_parent_inode_last_modification(file_ptr, sb, parent_id, time(0));
+	set_last_modification(file_ptr, sb, parent_id, time(0));
+	set_size_for_directory(file_ptr, sb, parent_id, used_block_count);
 	// ====================================================
 
 	return 1;
@@ -389,7 +401,6 @@ int rmdir(FILE *file_ptr, char *path_and_dir, char *must_be_null)
 		cout << "Not correct path and directory naming : " << real_path_and_dir << endl;
 		return -1;
 	}
-
 	int other_parent_id = 1; 
 	int parent_id = 1; 
 	// cout << "tokens_size : " << tokens_size << endl; 
@@ -429,6 +440,7 @@ int rmdir(FILE *file_ptr, char *path_and_dir, char *must_be_null)
 	fread(&inode, sizeof(iNode), 1, file_ptr);
 	int deleted_index_in_direct_block = inode.direct_block[0];
 	inode.direct_block[0] = -1;
+	strcpy(inode.file_name, "-"); // Removed inode file name.
 	// cout << "inode_id : " << inode.i_node_id << endl;
 	// cout << "parent : " << inode.parent_inode_id << endl;
 	// cout << "f.name : " << inode.file_name << endl;
@@ -453,15 +465,13 @@ int rmdir(FILE *file_ptr, char *path_and_dir, char *must_be_null)
 	removed_dir.i_node_number = parent_id;
 	strcpy(removed_dir.file_name, tokens[tokens_size - 1]);
 	clean_the_removed_directory_space(file_ptr, sb, other_parent_id_blocks_index, removed_dir);
-	set_parent_inode_last_modification(file_ptr, sb, other_parent_id, time(0));
+	set_last_modification(file_ptr, sb, other_parent_id, time(0));
 
 	return 1;
 }
 
 int dumpe2fs(FILE *file_ptr, char *must_be_null1, char *must_be_null2)
 { 
-	cout << "dumpe2fs" << endl;
-
 	if(must_be_null1 != NULL)
 	{
 		cout << "File System Error!" << endl;
@@ -481,24 +491,42 @@ int dumpe2fs(FILE *file_ptr, char *must_be_null1, char *must_be_null2)
 	int dir_count = 0, file_count = 0;
 	calculate_director_and_file_count(file_ptr, sb, &dir_count, &file_count);
 
+	cout << "Block Count : " << total_block_count << endl;
+	cout << "I-node Count : " << total_inode_count << endl;
+	cout << "Free Block Count : " << free_block_count << endl;
+	cout << "Free I-node Count : " << free_inode_count << endl;
+	cout << "Directory Count : " << dir_count << endl;
+	cout << "File Count : " << file_count << endl;
+	cout << "Block Size : " << block_size << " bytes" << endl;
 
-	cout << "B : " << total_block_count << endl;
-	cout << "I : " << total_inode_count << endl;
-	cout << "FB : " << free_block_count << endl;
-	cout << "FI : " << free_inode_count << endl;
-	cout << "D : " << dir_count << endl;
-	cout << "F : " << file_count << endl;
-	cout << "BS: " << block_size << endl;
+	int used_inode_addr[sb.amount_of_i_nodes];
+	int used_inode_count = find_used_inode_addr(file_ptr, sb, used_inode_addr);
+	iNode inode_arr[used_inode_count];
 
-	// list block count (Total)
-	// i-node count (Total)
-	// free i-node count
-	// free block count
-	// numbers of file
-	// numbers of directory
-	// block size
-	// used inodes
+	cout << "Information About Used I-nodes" << endl;
+	cout << "Parent I-node Id | I-node Id | File Name | Block Index -> Block Address" << endl;
 
+	for(int i = 0; i < used_inode_count; ++i)
+	{
+		fseek(file_ptr, used_inode_addr[i], SEEK_SET);
+		fread(&inode_arr[i], sizeof(iNode), 1, file_ptr);
+		cout << inode_arr[i].parent_inode_id << " | ";
+		cout << inode_arr[i].i_node_id << " | ";
+		cout << "\""<< inode_arr[i].file_name << "\" | ";		
+		int count = 0;
+		int index_of_used_block[DirectBlocksNum];
+
+		for(int j = 0; j < DirectBlocksNum; ++j)
+		{
+			if(inode_arr[i].direct_block[j] != -1)
+			{
+				index_of_used_block[count] = inode_arr[i].direct_block[j]; 
+				count++;
+			}
+		}
+		for(int j = 0; j < count; ++j)
+			cout << index_of_used_block[j] << " -> " << calculate_block_addr(sb, index_of_used_block[j]) << endl;
+	}
 	return 1;
 }
 
@@ -600,8 +628,6 @@ int lnsym(FILE *file_ptr, char *source, char *dest)
 
 int fsck(FILE *file_ptr, char *must_be_null1, char *must_be_null2)
 { 
-	cout << "fsck" << endl;
-
 	if(must_be_null1 != NULL)
 	{
 		cout << "File System Error!" << endl;
@@ -613,14 +639,77 @@ int fsck(FILE *file_ptr, char *must_be_null1, char *must_be_null2)
 	fseek(file_ptr, 0, SEEK_SET);
 	fread(&sb, sizeof(sb), 1, file_ptr);
 
-	cout << sb.amount_of_block << endl;
-	cout << sb.amount_of_i_nodes << endl;
-
 	int free_block_arr[sb.amount_of_block];
 	int used_block_arr[sb.amount_of_block];
-
 	int free_inode_arr[sb.amount_of_i_nodes];
 	int used_inode_arr[sb.amount_of_i_nodes];
+
+	fill_array_with_zeros(free_block_arr, sb.amount_of_block);
+	fill_array_with_zeros(used_block_arr, sb.amount_of_block);
+	fill_array_with_zeros(free_inode_arr, sb.amount_of_i_nodes);
+	fill_array_with_zeros(used_inode_arr, sb.amount_of_i_nodes);
+
+	iNode inode_arr[sb.amount_of_i_nodes];
+	fseek(file_ptr, sb.i_node_position, SEEK_SET);
+
+	// Scanning all inodes from start of the begining of i-node position in the file
+	for(int i = 0; i < sb.amount_of_i_nodes; ++i)
+	{
+		fread(&inode_arr[i], sizeof(iNode), 1, file_ptr);
+
+		if((inode_arr[i].file_name[0] != '-')) // means that not empty i node
+			used_inode_arr[inode_arr[i].i_node_id - 1] = used_inode_arr[inode_arr[i].i_node_id - 1] + 1; 
+		
+	}
+
+	// Scanning bitmap_inode for free places
+	fseek(file_ptr, sb.bitmap_inode_positon, SEEK_SET);
+	int is_free;
+	for(int i = 0; i < sb.amount_of_i_nodes; ++i)
+	{
+		fread(&is_free, sizeof(is_free), 1, file_ptr);
+		if(is_free == 0) // means that empty
+			free_inode_arr[i] = free_inode_arr[i] + 1; 
+	}
+
+	// Scanning used inodes block index for used block
+	for(int i = 0; i < sb.amount_of_i_nodes; ++i)
+	{
+		for(int j = 0; j < DirectBlocksNum; ++j)
+		{
+			if((inode_arr[i].direct_block[j] != -1)) // means that not empty block
+				used_block_arr[inode_arr[i].direct_block[j]] = used_block_arr[inode_arr[i].direct_block[j]] + 1;
+		}
+	}
+
+	// Scanning bitmap for free block
+	BitMapBlock bmb;
+	fseek(file_ptr, sb.bitmap_position, SEEK_SET);
+	fread(&bmb, sizeof(bmb), 1, file_ptr);
+
+	for(int i = 0; bmb.max_bitmap_block[i] != -1; ++i)
+	{
+		if(bmb.max_bitmap_block[i] == 0)
+			free_block_arr[i] = free_block_arr[i] + 1;
+	}
+	
+	cout << "Used Block Table" << endl;
+	for(int i = 0; i < 10; ++i) // for(int i = 0; i < sb.amount_of_block; ++i)
+		cout << used_block_arr[i] << " ";
+
+	cout << "\n\nFree Block Table" << endl;
+	for(int i = 0; i < 10; ++i) // for(int i = 0; i < sb.amount_of_block; ++i)
+		cout << free_block_arr[i] << " ";
+
+	cout << "\n\nUsed I-node Table" << endl;
+	for(int i = 0; i < 10; ++i) // for(int i = 0; i < sb.amount_of_i_nodes; ++i)
+		cout << used_inode_arr[i] << " ";
+
+	cout << "\n\nFree I-node Table" << endl;
+	for(int i = 0; i < 10; ++i) // for(int i = 0; i < sb.amount_of_i_nodes; ++i)
+		cout << free_inode_arr[i] << " ";
+
+	cout << endl;
 
 
 
@@ -630,7 +719,6 @@ int fsck(FILE *file_ptr, char *must_be_null1, char *must_be_null2)
 vector<char*> parse_string(char *str)
 {
 	vector<char*> tokens;
-	int seperator_count = 0;
 
 	if(str[0] != split[0])
 		return tokens;
@@ -778,7 +866,7 @@ int calculate_dir_or_file_in_a_block(FILE *file_ptr, SuperBlock sb, int block_ad
 	for(int i = 0; i < max_dir_in_block; ++i)
 	{
 		fread(&dir_arr[i], sizeof(Directory), 1, file_ptr);
-		if(dir_arr[i].file_name[0] != '\0' && dir_arr[i].file_name[0] != '-')
+		if(dir_arr[i].file_name[0] != '\0' && dir_arr[i].file_name[0] != '-') //!!
 			dir_count++;
 	}
 	return dir_count;
@@ -835,12 +923,11 @@ int first_place_to_add_directory_structor(FILE *file_ptr, SuperBlock sb, int blo
 	for(int i = 0; i < max_dir_in_block; ++i)
 	{
 		fread(&dir_arr[i], sizeof(Directory), 1, file_ptr);
-		if(dir_arr[i].file_name[0] == '\0' || dir_arr[i].file_name[0] == '-')
+		if(dir_arr[i].file_name[0] == '\0' || dir_arr[i].file_name[0] == '-') //!!
 			break;
 		dir_count++;
 	}
 	return dir_count;
-
 }
 
 int find_direct_block_index(iNode i_node)
@@ -904,7 +991,7 @@ int find_used_inode_addr(FILE *file_ptr, SuperBlock sb, int used_inode_addr[])
 	return used_inode_count;
 }
 
-void set_parent_inode_last_modification(FILE *file_ptr, SuperBlock sb, int i_node_id, time_t time)
+void set_last_modification(FILE *file_ptr, SuperBlock sb, int i_node_id, time_t time)
 {
 	iNode inode;
 
@@ -1022,6 +1109,24 @@ int find_place_of_directory(FILE *file_ptr, SuperBlock sb, int block_addr, Direc
 		dir_count++;
 	}
 	return dir_count;
+}
+
+void fill_array_with_zeros(int arr[], int size)
+{
+	for(int i = 0; i < size; ++i)
+		arr[i] = 0;
+}
+
+void set_size_for_directory(FILE *file_ptr, SuperBlock sb, int i_node_id, int used_block_count)
+{
+	iNode inode;
+
+	int inode_addr = calculate_inode_addr(sb, i_node_id - 1);
+	fseek(file_ptr, inode_addr, SEEK_SET);
+	fread(&inode, sizeof(iNode), 1, file_ptr);
+	inode.size_of_file = sb.block_size * used_block_count;
+	fseek(file_ptr, inode_addr, SEEK_SET);
+	fwrite(&inode, sizeof(iNode), 1, file_ptr);
 }
 
 void printSuperBlock(SuperBlock sb)

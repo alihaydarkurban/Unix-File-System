@@ -67,4 +67,5 @@ struct BitMapBlock
 	int max_bitmap_block[_1KB]; // 0 means that empty, 1 means that full -1 means that end
 };
 
+
 #endif

@@ -93,7 +93,7 @@ int init_file_system(char *file_system, int block_size, int num_of_i_nodes)
 
 	init_root(file_system); // Create root directory
 
-	// silinecekFonk(file_system); // bunu en son sil
+	silinecekFonk(file_system); // bunu en son sil
 
 	return 1;
 }
@@ -124,7 +124,7 @@ void init_iNode(FILE *file_ptr, int num_of_i_nodes)
 {
 	int i;
 	char fn[FileNameLength];
-
+	strcpy(fn, "-");
 	iNode i_node;
 	i_node.size_of_file = 0;
 	i_node.type = -1;
@@ -195,6 +195,7 @@ int init_root(char *file_system)
 	my_root.parent_inode_id = 1;
 	my_root.type = 0; // directory
 	my_root.direct_block[0] = 0; // It means that first block of the system
+	my_root.size_of_file = sb.block_size;
 	my_root.last_modification = time(0);
 	strcpy(my_root.file_name, "/"); // root_name
 	fseek(file_ptr, sb.i_node_position, SEEK_SET);
