@@ -131,13 +131,24 @@ void silinecekFonk(char *file_system)
 	cout << "inode : " << dir.i_node_number << endl;
 	cout << "file  : " << dir.file_name << endl;
 
-	// fseek(file_ptr, 48412, SEEK_SET);
-	// char ch;
-	// for(int i = 0; i < 30; ++i)
+	// fseek(file_ptr, 44316, SEEK_SET);
+	// char ch = 'X';
+	// int size = 0;
+	// for(int i = 0; ; ++i)
 	// {
 	// 	fread(&ch, sizeof(ch), 1, file_ptr);
-	// 	cout << ch;
+	// 	if(ch != '\0')
+	// 	{
+	// 		cout << ch << "-";
+	// 		size++;
+	// 	}
+	// 	else
+	// 	{
+	// 		break;
+	// 	}
 	// }
+
+	// cout << "silicenek : " << size << endl;
 
 	fclose(file_ptr);
 }
@@ -534,7 +545,9 @@ int dumpe2fs(FILE *file_ptr, char *must_be_null1, char *must_be_null2)
 			}
 		}
 		for(int j = 0; j < count; ++j)
-			cout << index_of_used_block[j] << " -> " << calculate_block_addr(sb, index_of_used_block[j]) << endl;
+			cout << index_of_used_block[j] << " -> " << calculate_block_addr(sb, index_of_used_block[j]) << ". ";
+		
+		cout << endl;
 	}
 	return 1;
 }
@@ -560,7 +573,7 @@ int write(FILE *file_ptr, char *path, char *file)
 	if(tokens_size == 0)
 	{
 		cout << "File System Error!" << endl;
-		cout << "Not correct path and directory naming : " << real_path_and_file << endl;
+		cout << "Not correct path and file naming : " << real_path_and_file << endl;
 		return -1;
 	}
 
@@ -608,7 +621,6 @@ int write(FILE *file_ptr, char *path, char *file)
 
 	// child_inode_id free_idone_index + 1, i_node_id goes 1,2,3,...n 
 	int new_i_node_addr = calculate_inode_addr(sb, free_inode_index);	// This is new free inode index for new dir or file
-	// int new_block_addr = calculate_block_addr(sb, free_block_index);	// This is new free block index for new dir or file
 	vector<int> parent_blocks_index = calculate_blocks_index(file_ptr, sb, parent_id);	// Finds the parent's used blocks index
 
 	int used_block_count = parent_blocks_index.size();
@@ -779,7 +791,6 @@ int write(FILE *file_ptr, char *path, char *file)
 
 int read(FILE *file_ptr, char *path, char *file)
 { 
-	cout << "read" << endl;
 
 	if(path == NULL || file == NULL)
 	{
@@ -788,10 +799,79 @@ int read(FILE *file_ptr, char *path, char *file)
 		return -1;
 	}
 
-	cout << "It is OK to run" << endl;
-	cout << "path name : " << path << endl;
-	cout << "file name : " << file << endl;
+	SuperBlock sb;
+	fseek(file_ptr, 0, SEEK_SET);
+	fread(&sb, sizeof(sb), 1, file_ptr);
 
+	char real_path_and_file[MAX_PATH_SIZE];
+	strcpy(real_path_and_file, path);
+	char linux_file[MAX_PATH_SIZE];
+	strcpy(linux_file, file);
+
+
+	vector<char*> tokens = parse_string(path); // Parsing the path
+	int tokens_size = tokens.size();
+
+	if(tokens_size == 0)
+	{
+		cout << "File System Error!" << endl;
+		cout << "Not correct path and file naming : " << real_path_and_file << endl;
+		return -1;
+	}
+
+	int parent_id = 1; 
+	for(int i = 0; i < tokens_size; ++i)
+	{
+		int current_parent_id;
+		bool control;
+
+		if(i == tokens_size - 1)
+			control = find_parent_inode_id(file_ptr, parent_id, tokens[i], 1, &current_parent_id); // file check
+		else
+			control = find_parent_inode_id(file_ptr, parent_id, tokens[i], 0, &current_parent_id); // directory check
+
+		if(control == false)
+		{
+			cout << "File System Error!" << endl;
+			cout << "There is no file path like : " << real_path_and_file << endl;
+			return -1;
+		}
+		parent_id = current_parent_id;
+	}
+
+	cout << "parent id : " << parent_id << endl;
+	vector<int> parent_blocks_index = calculate_blocks_index(file_ptr, sb, parent_id);	// Finds the parent's used blocks index
+	int block_index_size = parent_blocks_index.size(); 
+	cout << block_index_size << endl;
+
+	FILE *new_file_ptr;
+	new_file_ptr = fopen(linux_file, "w");
+	if(new_file_ptr == NULL)
+	{
+		cout << "Error occurs while opening \"" << linux_file << "\" file" << endl;
+		return -1;
+	}
+
+	int block_addr = calculate_block_addr(sb, parent_blocks_index[0]);
+	fseek(file_ptr, block_addr, SEEK_SET);
+	int count = 0;
+	for(int i = 0; i < (block_index_size * sb.block_size); ++i)
+	{
+		if(i % sb.block_size == 0 && i != 0)
+		{
+			count++;
+			block_addr = calculate_block_addr(sb, parent_blocks_index[count]);
+			fseek(file_ptr, block_addr, SEEK_SET);
+		}
+		char ch;
+		fread(&ch, sizeof(char), 1, file_ptr);
+
+		if(ch != '\0')
+			fwrite(&ch, sizeof(char), 1, new_file_ptr);
+		else
+			break;
+	}
+	fclose(new_file_ptr);
 
 	return 1;
 }
@@ -1181,9 +1261,9 @@ void list_print_given_id(FILE *file_ptr, SuperBlock sb, int i_node_id)
 		if(inode_arr[i].parent_inode_id == i_node_id && inode_arr[i].i_node_id != i_node_id)
 		{
 			if(inode_arr[i].type == 0) // directory
-				cout << "Directory   cse312@ubuntu ";
+				cout << "Directory    cse312@ubuntu ";
 			else if(inode_arr[i].type == 1) // directoy
-				cout << "RegularFile cse312@ubuntu ";
+				cout << "RegularFile  cse312@ubuntu ";
 
 			total = total + inode_arr[i].size_of_file; 
 			printf("%7d ", inode_arr[i].size_of_file);
@@ -1193,7 +1273,7 @@ void list_print_given_id(FILE *file_ptr, SuperBlock sb, int i_node_id)
 			cout << inode_arr[i].file_name << endl;
 		}
 	}
-	cout << "Total : " << total  << " bytesSSS" << endl;
+	cout << "Total : " << total  << " bytes" << endl;
 }
 
 int find_used_inode_addr(FILE *file_ptr, SuperBlock sb, int used_inode_addr[])
