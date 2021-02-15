@@ -168,9 +168,9 @@ void init_BitMap_iNode(FILE *file_ptr, int num_of_i_nodes)
 
 void init_remaining(FILE *file_ptr, int remaining_size)
 {
-	int i;
-	for(i = 0; i < remaining_size; ++i)
-		fprintf(file_ptr, "%c", '\0');
+	char empty = '\0';
+	for(int j = 0; j < remaining_size; ++j)
+		fwrite(&empty, sizeof(char), 1, file_ptr);
 }
 
 int init_root(char *file_system)

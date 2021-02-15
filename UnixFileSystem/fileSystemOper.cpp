@@ -38,7 +38,7 @@ int find_place_of_directory(FILE *file_ptr, SuperBlock sb, int block_addr, Direc
 void fill_array_with_zeros(int arr[], int size);
 void set_size_for_directory(FILE *file_ptr, SuperBlock sb, int i_node_id, int used_block_count);
 void free_bitmap_blocks_indexes_different_from_given(FILE *file_ptr, SuperBlock sb, int block_index[], int size);
-
+void clean_block(FILE *file_ptr, SuperBlock sb, vector<int> block_index);
 // print fonks....
 void printSuperBlock(SuperBlock sb);
 void print_iNode(FILE *file_ptr, SuperBlock sb);
@@ -125,7 +125,7 @@ void silinecekFonk(char *file_system)
 	cout << endl;
 
 	Directory dir;
-	fseek(file_ptr, sb.block_position, SEEK_SET);
+	fseek(file_ptr, sb.block_position + sizeof(Directory),  SEEK_SET);
 	fread(&dir, sizeof(dir), 1, file_ptr);
 
 	cout << "inode : " << dir.i_node_number << endl;
@@ -479,6 +479,7 @@ int rmdir(FILE *file_ptr, char *path_and_dir, char *must_be_null)
 	int empty = 0;
 	fwrite(&empty, sizeof(int), 1, file_ptr);
 
+	// ========================================
 	// other_parent_id operations
 	vector<int> other_parent_id_blocks_index = calculate_blocks_index(file_ptr, sb, other_parent_id);
 	Directory removed_dir;
@@ -486,7 +487,7 @@ int rmdir(FILE *file_ptr, char *path_and_dir, char *must_be_null)
 	strcpy(removed_dir.file_name, tokens[tokens_size - 1]);
 	clean_the_removed_directory_space(file_ptr, sb, other_parent_id_blocks_index, removed_dir);
 	set_last_modification(file_ptr, sb, other_parent_id, time(0));
-
+	// ========================================
 	return 1;
 }
 
@@ -716,7 +717,11 @@ int write(FILE *file_ptr, char *path, char *file)
 	cout << needed_block_count << endl;
 
 	if(needed_block_count > DirectBlocksNum)
+	{
+		cout << "There is no single, double and triple blocks yet" << endl;
+		cout << "At most number of " << DirectBlocksNum << "block will be used" << endl;
 		needed_block_count = DirectBlocksNum;
+	}
 
 	int new_block_index[needed_block_count];
 	for(int i = 0; i < needed_block_count; ++i)
@@ -878,8 +883,6 @@ int read(FILE *file_ptr, char *path, char *file)
 
 int del(FILE *file_ptr, char *path_and_file, char *must_be_null)
 { 
-	cout << "del" << endl;
-
 	if(path_and_file == NULL || must_be_null != NULL)
 	{
 		cout << "File System Error!" << endl;
@@ -887,8 +890,96 @@ int del(FILE *file_ptr, char *path_and_file, char *must_be_null)
 		return -1;
 	}
 
-	cout << "It is OK to run" << endl;
-	cout << "Path and file name : " << path_and_file << endl;
+	SuperBlock sb;
+	fseek(file_ptr, 0, SEEK_SET);
+	fread(&sb, sizeof(sb), 1, file_ptr);
+
+	char real_path_and_file[MAX_PATH_SIZE];
+	strcpy(real_path_and_file, path_and_file);
+
+	vector<char*> tokens = parse_string(path_and_file); // Parsing the path
+	int tokens_size = tokens.size();
+
+	if(tokens_size == 0)
+	{
+		cout << "File System Error!" << endl;
+		cout << "Not correct path and file naming : " << real_path_and_file << endl;
+		return -1;
+	}
+
+	int other_parent_id = 1; 
+	int parent_id = 1; 
+	// cout << "tokens_size : " << tokens_size << endl; 
+	for(int i = 0; i < tokens_size; ++i)
+	{
+		bool control;
+		int current_parent_id;
+		if(i == tokens_size - 1)
+			control = find_parent_inode_id(file_ptr, parent_id, tokens[i], 1, &current_parent_id); // file check
+		else
+			control = find_parent_inode_id(file_ptr, parent_id, tokens[i], 0, &current_parent_id); // directory check
+
+		if(control == false)
+		{
+			cout << "File System Error!" << endl;
+			cout << "There is no path like : " << real_path_and_file << endl;
+			return -1;
+		}
+		parent_id = current_parent_id;
+		if(i == (tokens_size - 2))
+		{
+			// cout << "token : " << tokens[i] << endl;
+			other_parent_id = parent_id;
+		}
+	}
+
+	cout << "Ben : " << parent_id << endl; // silinecek dosya
+	cout << "Parenmt : " << other_parent_id << endl; // silinecek dosyanın parentı
+
+	vector<int> block_index = calculate_blocks_index(file_ptr, sb, parent_id);
+
+	int parent_inode_position = calculate_inode_addr(sb, parent_id - 1);
+	
+	cout << "OTHER PARENT ID : " << other_parent_id << endl;  //4
+	cout << "----> : " << parent_id << endl; //7
+
+	fseek(file_ptr, parent_inode_position, SEEK_SET);
+	iNode inode;
+	fread(&inode, sizeof(iNode), 1, file_ptr);
+	for(int i = 0; i < DirectBlocksNum; ++i)
+		inode.direct_block[i] = -1;
+	strcpy(inode.file_name, "-"); // Removed inode file name.
+	// cout << "inode_id : " << inode.i_node_id << endl;
+	// cout << "parent : " << inode.parent_inode_id << endl;
+	// cout << "f.name : " << inode.file_name << endl;
+
+	fseek(file_ptr, parent_inode_position, SEEK_SET);
+	fwrite(&inode, sizeof(iNode), 1, file_ptr);
+
+	fseek(file_ptr, sb.bitmap_position, SEEK_SET);
+	BitMapBlock bmb;
+	fread(&bmb, sizeof(BitMapBlock), 1, file_ptr);
+	for(int i = 0; i < block_index.size(); ++i)
+		bmb.max_bitmap_block[block_index[i]] = 0;
+	fseek(file_ptr, sb.bitmap_position, SEEK_SET);
+	fwrite(&bmb, sizeof(BitMapBlock), 1, file_ptr);
+
+	fseek(file_ptr, sb.bitmap_inode_positon + (sizeof(int) * (parent_id - 1)), SEEK_SET);
+	int empty = 0;
+	fwrite(&empty, sizeof(int), 1, file_ptr);
+	clean_block(file_ptr, sb, block_index);
+
+	// ========================================
+	// other_parent_id operations (real parent)
+	vector<int> other_parent_id_blocks_index = calculate_blocks_index(file_ptr, sb, other_parent_id);
+	Directory removed_dir;
+	removed_dir.i_node_number = parent_id;
+	strcpy(removed_dir.file_name, tokens[tokens_size - 1]);
+	clean_the_removed_directory_space(file_ptr, sb, other_parent_id_blocks_index, removed_dir);
+	set_last_modification(file_ptr, sb, other_parent_id, time(0));
+	// ========================================
+
+
 
 
 	return 1;
@@ -1456,6 +1547,19 @@ void free_bitmap_blocks_indexes_different_from_given(FILE *file_ptr, SuperBlock 
 		}
 		if(index >= size)
 			break;
+	}
+}
+
+void clean_block(FILE *file_ptr, SuperBlock sb, vector<int> block_index)
+{
+	for(int i = 0; i < block_index.size(); ++i)
+	{	
+		int addr = calculate_block_addr(sb, block_index[i]);
+		fseek(file_ptr, addr, SEEK_SET);
+		char empty = '\0';
+		for(int j = 0; j < sb.block_size; ++j)
+			fwrite(&empty, sizeof(char), 1, file_ptr);
+		
 	}
 }
 
