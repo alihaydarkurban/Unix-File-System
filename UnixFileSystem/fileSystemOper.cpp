@@ -34,7 +34,7 @@ int calculate_free_block_count(FILE *file_ptr, SuperBlock sb);
 void calculate_director_and_file_count(FILE *file_ptr, SuperBlock sb, int* dir_countP, int *file_countP);
 int first_place_to_add_directory_structor(FILE *file_ptr, SuperBlock sb, int block_addr);
 void clean_the_removed_directory_space(FILE *file_ptr, SuperBlock sb, vector<int> other_parent_id_blocks_index, Directory removed_dir);
-int find_place_of_directory(FILE *file_ptr, SuperBlock sb, int block_addr, Directory dir);
+int find_place_of_directory(FILE *file_ptr, SuperBlock sb, int block_addr, Directory dir, bool *first_time);
 void fill_array_with_zeros(int arr[], int size);
 void set_size_for_directory(FILE *file_ptr, SuperBlock sb, int i_node_id, int used_block_count);
 void free_bitmap_blocks_indexes_different_from_given(FILE *file_ptr, SuperBlock sb, int block_index[], int size);
@@ -109,23 +109,23 @@ void silinecekFonk(char *file_system)
 	printSuperBlock(sb);
 	print_iNode(file_ptr, sb);
 
-	BitMapBlock bmb;
-	fseek(file_ptr, sb.bitmap_position, SEEK_SET);
-	fread(&bmb, sizeof(bmb), 1, file_ptr);
-	print_BitMapBlock(bmb);
+	// BitMapBlock bmb;
+	// fseek(file_ptr, sb.bitmap_position, SEEK_SET);
+	// fread(&bmb, sizeof(bmb), 1, file_ptr);
+	// print_BitMapBlock(bmb);
 
-	fseek(file_ptr, sb.bitmap_inode_positon, SEEK_SET);
-	cout << "bitmap_inode : ";
-	int bm_inode;
-	for(int i = 0; i < sb.amount_of_i_nodes; ++i)
-	{
-		fread(&bm_inode, sizeof(bm_inode), 1, file_ptr);
-		cout << bm_inode << " ";
-	}
-	cout << endl;
+	// fseek(file_ptr, sb.bitmap_inode_positon, SEEK_SET);
+	// cout << "bitmap_inode : ";
+	// int bm_inode;
+	// for(int i = 0; i < sb.amount_of_i_nodes; ++i)
+	// {
+	// 	fread(&bm_inode, sizeof(bm_inode), 1, file_ptr);
+	// 	cout << bm_inode << " ";
+	// }
+	// cout << endl;
 
 	Directory dir;
-	fseek(file_ptr, sb.block_position + sizeof(Directory),  SEEK_SET);
+	fseek(file_ptr, sb.block_position,   SEEK_SET);
 	fread(&dir, sizeof(dir), 1, file_ptr);
 
 	cout << "inode : " << dir.i_node_number << endl;
@@ -294,6 +294,15 @@ int mkdir(FILE *file_ptr, char *path_and_dir, char *must_be_null)
 		return -1;
 	}
 
+	bool is_same_name = same_name_check(file_ptr, parent_id, tokens[tokens_size - 1], 0); // 0 means that directory
+
+	if(is_same_name == true)
+	{
+		cout << "File System Error!" << endl;
+		cout << "Same file name could not be possible in the same directory!" << endl;
+		return -1;
+	}
+
 	// find_block_addr_for_adding_file find the first useable block addr.
 	// It returns -1 if the parent inode needs new block.
 	// int usable_block_addr = find_block_addr_for_adding_file(file_ptr, sb, parent_id, parent_blocks_index);
@@ -332,15 +341,6 @@ int mkdir(FILE *file_ptr, char *path_and_dir, char *must_be_null)
 		fseek(file_ptr, sb.bitmap_position, SEEK_SET);
 		fwrite(&bmb, sizeof(bmb), 1, file_ptr);
 
-	}
-
-	bool is_same_name = same_name_check(file_ptr, parent_id, tokens[tokens_size - 1], 0); // 0 means that directory
-
-	if(is_same_name == true)
-	{
-		cout << "File System Error!" << endl;
-		cout << "Same file name could not be possible in the same directory!" << endl;
-		return -1;
 	}
 
 	int dir_count = first_place_to_add_directory_structor(file_ptr, sb, usable_block_addr);
@@ -483,8 +483,13 @@ int rmdir(FILE *file_ptr, char *path_and_dir, char *must_be_null)
 	// other_parent_id operations
 	vector<int> other_parent_id_blocks_index = calculate_blocks_index(file_ptr, sb, other_parent_id);
 	Directory removed_dir;
-	removed_dir.i_node_number = parent_id;
-	strcpy(removed_dir.file_name, tokens[tokens_size - 1]);
+	removed_dir.i_node_number = parent_id; // /ali/haydar --> haydar's id
+	strcpy(removed_dir.file_name, tokens[tokens_size - 1]); // /ali/haydar --> haydar
+
+	cout << "rmdir : " << removed_dir.file_name << endl;
+	cout << "rmdir : " << removed_dir.i_node_number << endl;
+
+
 	clean_the_removed_directory_space(file_ptr, sb, other_parent_id_blocks_index, removed_dir);
 	set_last_modification(file_ptr, sb, other_parent_id, time(0));
 	// ========================================
@@ -636,6 +641,15 @@ int write(FILE *file_ptr, char *path, char *file)
 		return -1;
 	}
 
+	bool is_same_name = same_name_check(file_ptr, parent_id, tokens[tokens_size - 1], 1); // 1 means that file
+
+	if(is_same_name == true)
+	{
+		cout << "File System Error!" << endl;
+		cout << "Same file name could not be possible in the same directory!" << endl;
+		return -1;
+	}
+
 	cout << "-->" << usable_block_addr << endl;
 
 	if(usable_block_addr == -1) // parent inode's direct_block needs new block 
@@ -671,15 +685,6 @@ int write(FILE *file_ptr, char *path, char *file)
 		fseek(file_ptr, sb.bitmap_position, SEEK_SET);
 		fwrite(&bmb, sizeof(bmb), 1, file_ptr);
 
-	}
-
-	bool is_same_name = same_name_check(file_ptr, parent_id, tokens[tokens_size - 1], 1); // 1 means that file
-
-	if(is_same_name == true)
-	{
-		cout << "File System Error!" << endl;
-		cout << "Same file name could not be possible in the same directory!" << endl;
-		return -1;
 	}
 
 	int dir_count = first_place_to_add_directory_structor(file_ptr, sb, usable_block_addr);
@@ -1283,8 +1288,13 @@ vector<int> calculate_blocks_index(FILE *file_ptr, SuperBlock sb, int i_node_id)
 	iNode i_node;
 	fread(&i_node, sizeof(iNode), 1, file_ptr);
 
-	for(int i = 0; (i_node.direct_block[i] != -1) && (i < DirectBlocksNum); ++i)	
-		blocks_index.push_back(i_node.direct_block[i]);
+	for(int i = 0; (i < DirectBlocksNum); ++i)
+	{
+		if(i_node.direct_block[i] != -1)
+		{
+			blocks_index.push_back(i_node.direct_block[i]);			
+		}
+	}	
 
 	return blocks_index;
 }
@@ -1478,9 +1488,16 @@ void clean_the_removed_directory_space(FILE *file_ptr, SuperBlock sb, vector<int
 	
 	for(int i = 0; i < other_parent_id_blocks_index.size(); ++i)
 	{
+		bool first_time = false;
 		block_addr = calculate_block_addr(sb, other_parent_id_blocks_index[i]); // This is block addr of given block index
 
-		dir_count = find_place_of_directory(file_ptr, sb, block_addr, removed_dir);
+		cout << "in : " << removed_dir.file_name << endl;
+		cout << "in : " << removed_dir.i_node_number << endl;
+
+		dir_count = find_place_of_directory(file_ptr, sb, block_addr, removed_dir, &first_time);
+
+		if(first_time == true)
+			break;
 	}
 
 	fseek(file_ptr, block_addr + (dir_count * sizeof(Directory)), SEEK_SET);
@@ -1491,7 +1508,7 @@ void clean_the_removed_directory_space(FILE *file_ptr, SuperBlock sb, vector<int
 	fwrite(&empty, sizeof(Directory), 1, file_ptr);
 }
 
-int find_place_of_directory(FILE *file_ptr, SuperBlock sb, int block_addr, Directory dir)
+int find_place_of_directory(FILE *file_ptr, SuperBlock sb, int block_addr, Directory dir, bool *first_time)
 {
 	fseek(file_ptr, block_addr, SEEK_SET); // Makes the file_ptr the begining of addable block
 
@@ -1500,11 +1517,22 @@ int find_place_of_directory(FILE *file_ptr, SuperBlock sb, int block_addr, Direc
 	Directory dir_arr[max_dir_in_block];
 	int dir_count = 0;
 
+	cout << "in2 : " << dir.file_name << endl;
+	cout << "in2 : " << dir.i_node_number << endl;
+
+	cout << "maxdircount : " << max_dir_in_block << endl;
+
 	for(int i = 0; i < max_dir_in_block; ++i)
 	{
 		fread(&dir_arr[i], sizeof(Directory), 1, file_ptr);
+
+		cout << "** " << dir_arr[i].file_name << endl;
+		cout << "** " << dir_arr[i].i_node_number << endl;
 		if((strcmp(dir_arr[i].file_name, dir.file_name) == 0) && (dir_arr[i].i_node_number == dir.i_node_number))
+		{
+			*first_time = true;
 			break;
+		}
 		dir_count++;
 	}
 	return dir_count;
