@@ -132,6 +132,7 @@ void init_iNode(FILE *file_ptr, int num_of_i_nodes)
 		i_node.direct_block[i] = -1; // not initialize
 	i_node.last_modification = time(0);
 	strcpy(i_node.file_name, fn);
+	strcpy(i_node.lnsym_path, fn); //
 
 	for(i = 0; i < num_of_i_nodes; ++i)
 	{
@@ -295,6 +296,7 @@ void print_iNode(iNode i_node)
 	char* date = ctime(&i_node.last_modification);
 	cout << "last_modification : " << date;
 	cout << "file_name : " << i_node.file_name << endl;
+	cout << "lnsym_path : " << i_node.lnsym_path << endl;
 	cout << "================================" << endl;
 }
 

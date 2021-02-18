@@ -10,7 +10,7 @@
 
 using namespace std;
 
-#define MAX_PATH_SIZE 512
+#define MAX_PATH_SIZE 192
 #define SuperBlockItems 7
 #define DirectBlocksNum 10
 #define _1KB 1024 // 1 kilobyte = 1024 bytes
@@ -59,7 +59,8 @@ struct iNode
 	int direct_block[DirectBlocksNum]; // -1 means that not initialize
 	time_t last_modification;
 	char file_name[FileNameLength];
-	
+	char lnsym_path[MAX_PATH_SIZE];
+
 };
 
 struct BitMapBlock
