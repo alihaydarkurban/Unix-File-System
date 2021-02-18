@@ -1101,11 +1101,20 @@ int lnsym(FILE *file_ptr, char *source, char *dest)
 		}
 		source_id = current_parent_id;
 	}
-	cout << "source_id : " << source_id << endl;
+	int addr = calculate_inode_addr(sb, source_id - 1);
+	fseek(file_ptr, addr, SEEK_SET);
+	iNode control_inode;
+	fread(&control_inode, sizeof(iNode), 1, file_ptr);
+	if(strcmp(control_inode.lnsym_path, "-") != 0)
+	{
+		strcpy(real_source, control_inode.lnsym_path);
+	}
 	/// ================================================
-	
 	vector<char*> tokens_dest = parse_string(real_dest); // Parsing the path
-	
+
+	for(int i = 0; i < tokens_dest.size(); ++i)
+		cout << "ali : " << tokens_dest[i] << endl;
+
 	int tokens_size_dest = tokens_dest.size();
 	if(tokens_size_dest == 0)
 	{
@@ -1175,7 +1184,7 @@ int lnsym(FILE *file_ptr, char *source, char *dest)
 	if(is_same_name == true)
 	{
 		cout << "File System Error!" << endl;
-		cout << "Same file name could not be possible in the same directory!" << endl;
+		cout << "--Same file name could not be possible in the same directory!" << endl;
 		return -1;
 	}
 
