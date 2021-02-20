@@ -33,12 +33,15 @@ int calculate_free_inode_count(FILE *file_ptr, SuperBlock sb);
 int calculate_free_block_count(FILE *file_ptr, SuperBlock sb);
 void calculate_director_and_file_count(FILE *file_ptr, SuperBlock sb, int* dir_countP, int *file_countP, int inode_addresses[], int used_inode_count); // +
 int first_place_to_add_directory_structor(FILE *file_ptr, SuperBlock sb, int block_addr);
-void clean_the_removed_directory_space(FILE *file_ptr, SuperBlock sb, vector<int> other_parent_id_blocks_index, Directory removed_dir);
+void clean_the_removed_directory_space(FILE *file_ptr, SuperBlock sb, vector<int> other_parent_id_blocks_index, Directory removed_dir, int id);
 int find_place_of_directory(FILE *file_ptr, SuperBlock sb, int block_addr, Directory dir, bool *first_time);
 void fill_array_with_zeros(int arr[], int size);
 void set_size_for_directory(FILE *file_ptr, SuperBlock sb, int i_node_id, int used_block_count);
 void free_bitmap_blocks_indexes_different_from_given(FILE *file_ptr, SuperBlock sb, int block_index[], int size);
 void clean_block(FILE *file_ptr, SuperBlock sb, vector<int> block_index);
+bool is_all_free(FILE *file_ptr, SuperBlock sb, int block_addr);
+void set_all_linked_size(FILE *file_ptr, SuperBlock sb, int inode_addresses[], int used_inode_count, char *lnsym_path, int file_size);
+
 // print fonks....
 void printSuperBlock(SuperBlock sb);
 void print_iNode(FILE *file_ptr, SuperBlock sb);
@@ -479,7 +482,8 @@ int rmdir(FILE *file_ptr, char *path_and_dir, char *must_be_null)
 	iNode inode;
 	fread(&inode, sizeof(iNode), 1, file_ptr);
 	int deleted_index_in_direct_block = inode.direct_block[0];
-	inode.direct_block[0] = -1;
+	for(int i = 0; i < DirectBlocksNum; ++i)
+		inode.direct_block[i] = -1;
 	strcpy(inode.file_name, "-"); // Removed inode file name.
 	// cout << "inode_id : " << inode.i_node_id << endl;
 	// cout << "parent : " << inode.parent_inode_id << endl;
@@ -510,7 +514,7 @@ int rmdir(FILE *file_ptr, char *path_and_dir, char *must_be_null)
 	cout << "rmdir : " << removed_dir.i_node_number << endl;
 
 
-	clean_the_removed_directory_space(file_ptr, sb, other_parent_id_blocks_index, removed_dir);
+	clean_the_removed_directory_space(file_ptr, sb, other_parent_id_blocks_index, removed_dir, other_parent_id);
 	set_last_modification(file_ptr, sb, other_parent_id, time(0));
 	// ========================================
 	return 1;
@@ -667,6 +671,7 @@ int write(FILE *file_ptr, char *path, char *file)
 		fread(&check_the_file, sizeof(iNode), 1, file_ptr);
 
 		bool flag_for_adding_block = true;
+		bool likend_size_control = false;
 		FILE *new_file_ptr;
 		new_file_ptr = fopen(linux_file, "r");
 		if(new_file_ptr == NULL)
@@ -677,6 +682,7 @@ int write(FILE *file_ptr, char *path, char *file)
 
 		if(strcmp(check_the_file.lnsym_path, "-") != 0) // lnsym file
 		{
+			cout << "LINLI DOSYA" << endl;
 			char new_lnsym_path[MAX_PATH_SIZE];
 			strcpy(new_lnsym_path, check_the_file.lnsym_path);
 
@@ -706,6 +712,7 @@ int write(FILE *file_ptr, char *path, char *file)
 
 			parent_id = lnsym_parent_id;	
 			flag_for_adding_block = false;
+			likend_size_control = true;
 		}
 
 		fseek(new_file_ptr, 0, SEEK_END);
@@ -721,6 +728,7 @@ int write(FILE *file_ptr, char *path, char *file)
 			cout << "At most number of " << DirectBlocksNum << " block will be used" << endl;
 			needed_block_count = DirectBlocksNum;
 			reading_size = (needed_block_count * sb.block_size);
+			cout << "iiii : " << reading_size << endl;
 		}
 
 		cout << "pid : " << parent_id << endl;
@@ -742,6 +750,12 @@ int write(FILE *file_ptr, char *path, char *file)
 
 		// returns the usable block indexes (new_block_index)
 		free_bitmap_blocks_indexes_different_from_given(file_ptr, sb, new_block_index, needed_block_count);
+
+		for(int i = 0; i < needed_block_count; ++i)
+		{
+			cout << "asd: "<< new_block_index[i] << endl;
+		}
+
 		if(new_block_index[0] == -1)
 		{
 			cout << "File System Error!" << endl;
@@ -755,6 +769,8 @@ int write(FILE *file_ptr, char *path, char *file)
 		int block_addr = calculate_block_addr(sb, new_block_index[0]);
 		fseek(file_ptr, block_addr, SEEK_SET);
 
+
+		cout << "reading size : " << reading_size << endl;
 		for(int i = 0; i < reading_size; ++i)
 		{
 			char ch_in_reading_file = fgetc(new_file_ptr);
@@ -772,19 +788,23 @@ int write(FILE *file_ptr, char *path, char *file)
 		fclose(new_file_ptr);
 
 		//inode
-		fseek(file_ptr, check_the_file_addr, SEEK_SET);
 		iNode new_i_node;
+		cout << "--**-- : " << parent_id << endl;
+		int addr = calculate_inode_addr(sb, parent_id - 1);
+		fseek(file_ptr, addr, SEEK_SET);
 		fread(&new_i_node, sizeof(new_i_node), 1, file_ptr);
+		cout << "qqqq : " << new_i_node.file_name << endl;
 		new_i_node.last_modification = time(0);
-		if(flag_for_adding_block)
-		{
-			for(int i = 0; i < needed_block_count; ++i)
-				new_i_node.direct_block[i] = new_block_index[i];	
-		}
+		for(int i = 0; i < DirectBlocksNum; ++i)
+			new_i_node.direct_block[i] = -1;
+
+		for(int i = 0; i < needed_block_count; ++i)
+			new_i_node.direct_block[i] = new_block_index[i];	
 
 		new_i_node.size_of_file = reading_size;
-		fseek(file_ptr, check_the_file_addr, SEEK_SET);
+		fseek(file_ptr, addr, SEEK_SET);
 		fwrite(&new_i_node, sizeof(new_i_node), 1, file_ptr);
+
 
 		// bitmap block
 		fseek(file_ptr, sb.bitmap_position, SEEK_SET);
@@ -793,7 +813,9 @@ int write(FILE *file_ptr, char *path, char *file)
 			bmb.max_bitmap_block[new_block_index[i]] = 1;
 		fseek(file_ptr, sb.bitmap_position, SEEK_SET);
 		fwrite(&bmb, sizeof(bmb), 1, file_ptr);
+		
 
+		set_all_linked_size(file_ptr, sb, inode_addresses, used_inode_count, check_the_file.lnsym_path ,reading_size);
 		cout << "ali haydar : " << parent_id << endl;
 	}
 
@@ -1194,7 +1216,7 @@ int del(FILE *file_ptr, char *path_and_file, char *must_be_null)
 	Directory removed_dir;
 	removed_dir.i_node_number = parent_id;
 	strcpy(removed_dir.file_name, tokens[tokens_size - 1]);
-	clean_the_removed_directory_space(file_ptr, sb, other_parent_id_blocks_index, removed_dir);
+	clean_the_removed_directory_space(file_ptr, sb, other_parent_id_blocks_index, removed_dir, other_parent_id);
 	set_last_modification(file_ptr, sb, other_parent_id, time(0));
 	// ========================================
 
@@ -1892,13 +1914,13 @@ void calculate_director_and_file_count(FILE *file_ptr, SuperBlock sb, int* dir_c
 	}
 }
 
-void clean_the_removed_directory_space(FILE *file_ptr, SuperBlock sb, vector<int> other_parent_id_blocks_index, Directory removed_dir)
+void clean_the_removed_directory_space(FILE *file_ptr, SuperBlock sb, vector<int> other_parent_id_blocks_index, Directory removed_dir, int id)
 {
 	int max_dir_count = calculate_max_dir_or_file_in_a_block(sb); // It means that a block holds at most this number of dir and file.
 
 	int block_addr;
 	int dir_count;
-	
+	int which_index;
 	for(int i = 0; i < other_parent_id_blocks_index.size(); ++i)
 	{
 		bool first_time = false;
@@ -1908,7 +1930,7 @@ void clean_the_removed_directory_space(FILE *file_ptr, SuperBlock sb, vector<int
 		cout << "in : " << removed_dir.i_node_number << endl;
 
 		dir_count = find_place_of_directory(file_ptr, sb, block_addr, removed_dir, &first_time);
-
+		which_index = i;
 		if(first_time == true)
 			break;
 	}
@@ -1919,6 +1941,33 @@ void clean_the_removed_directory_space(FILE *file_ptr, SuperBlock sb, vector<int
 	char name[FileNameLength] = "-";
 	strcpy(empty.file_name, name);
 	fwrite(&empty, sizeof(Directory), 1, file_ptr);
+
+	if(other_parent_id_blocks_index.size() > 1)
+	{
+		int addr = calculate_block_addr(sb, other_parent_id_blocks_index[which_index]);
+
+		bool empty = is_all_free(file_ptr, sb, addr);
+
+		if(empty == true)
+		{
+			int inode_addr = calculate_inode_addr(sb, id -1);
+			iNode inode;
+			fseek(file_ptr, inode_addr, SEEK_SET);
+			fread(&inode, sizeof(iNode), 1, file_ptr);
+			inode.direct_block[which_index] = -1;
+			fseek(file_ptr, inode_addr, SEEK_SET);
+			fwrite(&inode, sizeof(iNode), 1, file_ptr);
+
+			BitMapBlock bmb;
+			fseek(file_ptr, sb.bitmap_position, SEEK_SET);
+			fread(&bmb, sizeof(bmb), 1, file_ptr);
+			bmb.max_bitmap_block[other_parent_id_blocks_index[which_index]] = 0;
+
+			fseek(file_ptr, sb.bitmap_position, SEEK_SET);
+			fwrite(&bmb, sizeof(bmb), 1, file_ptr);
+
+		}
+	}
 }
 
 int find_place_of_directory(FILE *file_ptr, SuperBlock sb, int block_addr, Directory dir, bool *first_time)
@@ -2001,6 +2050,44 @@ void clean_block(FILE *file_ptr, SuperBlock sb, vector<int> block_index)
 		for(int j = 0; j < sb.block_size; ++j)
 			fwrite(&empty, sizeof(char), 1, file_ptr);
 		
+	}
+}
+
+bool is_all_free(FILE *file_ptr, SuperBlock sb, int block_addr)
+{
+	fseek(file_ptr, block_addr, SEEK_SET); // Makes the file_ptr the begining of addable block
+
+	int max_dir_in_block = calculate_max_dir_or_file_in_a_block(sb); // This returns the max number of having directory or file in a block 
+	
+	Directory dir_arr[max_dir_in_block];
+
+	for(int i = 0; i < max_dir_in_block; ++i)
+	{
+		fread(&dir_arr[i], sizeof(Directory), 1, file_ptr);
+		if((strcmp(dir_arr[i].file_name, "-") != 0))
+			return false;
+	}
+	return true;
+}
+
+void set_all_linked_size(FILE *file_ptr, SuperBlock sb, int inode_addresses[], int used_inode_count, char *lnsym_path, int file_size)
+{
+	iNode inode_arr[used_inode_count];
+
+	cout << "*****" << lnsym_path << endl; 
+
+	for(int i = 0; i < used_inode_count; ++i)
+	{
+		fseek(file_ptr, inode_addresses[i], SEEK_SET);
+		fread(&inode_arr[i], sizeof(iNode), 1, file_ptr);
+
+		if(strcmp(inode_arr[i].lnsym_path, lnsym_path) == 0)
+		{
+			cout << "ALI HAYDAR : " << inode_arr[i].file_name << endl; 
+			inode_arr[i].size_of_file = file_size;
+			fseek(file_ptr, inode_addresses[i], SEEK_SET);
+			fwrite(&inode_arr[i], sizeof(iNode), 1, file_ptr);
+		}
 	}
 }
 
