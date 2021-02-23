@@ -1,13 +1,13 @@
 #include "fileSystem.h"
 
 int is_regular_operation(char *op);
-int list(FILE *file_ptr, char *path, char *must_be_null); // +
-int mkdir(FILE *file_ptr, char *path_and_dir, char *must_be_null); // +
-int rmdir(FILE *file_ptr, char *path_and_dir, char *must_be_null); // +
-int dumpe2fs(FILE *file_ptr, char *must_be_null1, char *must_be_null2); // +
-int write(FILE *file_ptr, char *path, char *file); // +
-int read(FILE *file_ptr, char *path, char *file); // +
-int del(FILE *file_ptr, char *path_and_file, char *must_be_null); // +
+int list(FILE *file_ptr, char *path, char *must_be_null);
+int mkdir(FILE *file_ptr, char *path_and_dir, char *must_be_null);
+int rmdir(FILE *file_ptr, char *path_and_dir, char *must_be_null);
+int dumpe2fs(FILE *file_ptr, char *must_be_null1, char *must_be_null2);
+int write(FILE *file_ptr, char *path, char *file);
+int read(FILE *file_ptr, char *path, char *file);
+int del(FILE *file_ptr, char *path_and_file, char *must_be_null);
 int ln(FILE *file_ptr, char *source, char *dest);
 int lnsym(FILE *file_ptr, char *source, char *dest);
 int fsck(FILE *file_ptr, char *must_be_null1, char *must_be_null2);
@@ -17,21 +17,21 @@ int free_bitmap_block_index(FILE *file_ptr, SuperBlock sb);
 int free_bitmap_inode_index(FILE *file_ptr, SuperBlock sb);
 int calculate_inode_addr(SuperBlock sb, int i_node_index);
 int calculate_block_addr(SuperBlock sb, int block_index);
-bool same_name_check(FILE *file_ptr, int i_node_id, char *name, int type_of_it, int inode_addresses[], int used_inode_count); // +
-bool find_parent_inode_id(FILE *file_ptr, int i_node_id, char *name, int type_of_it, int *inode_id_ptr, int inode_addresses[], int used_inode_count); // +
+bool same_name_check(FILE *file_ptr, int i_node_id, char *name, int type_of_it, int inode_addresses[], int used_inode_count);
+bool find_parent_inode_id(FILE *file_ptr, int i_node_id, char *name, int type_of_it, int *inode_id_ptr, int inode_addresses[], int used_inode_count);
 int calculate_dir_or_file_in_a_block(FILE *file_ptr, SuperBlock sb, int block_addr);
 int calculate_max_dir_or_file_in_a_block(SuperBlock sb);
 vector<int> calculate_blocks_index(FILE *file_ptr, SuperBlock sb, int i_node_id);
 int find_block_addr_for_adding_file(FILE *file_ptr, SuperBlock sb, int i_node_id, vector<int> blocks_index);
 int free_bitmap_index_different_from_given(FILE *file_ptr, SuperBlock sb, int given_index);
 int find_direct_block_index(iNode i_node);
-void list_print_given_id(FILE *file_ptr, SuperBlock sb, int i_node_id, int inode_addresses[], int used_inode_count); // +
+void list_print_given_id(FILE *file_ptr, SuperBlock sb, int i_node_id, int inode_addresses[], int used_inode_count);
 int find_used_inode_addr(FILE *file_ptr, SuperBlock sb, int used_inode_addr[]);
 void set_last_modification(FILE *file_ptr, SuperBlock sb, int i_node_id, time_t time);
-bool is_it_a_parent_inode(FILE *file_ptr, SuperBlock sb, int i_node_id, int inode_addresses[], int used_inode_count); // +
+bool is_it_a_parent_inode(FILE *file_ptr, SuperBlock sb, int i_node_id, int inode_addresses[], int used_inode_count); 
 int calculate_free_inode_count(FILE *file_ptr, SuperBlock sb);
 int calculate_free_block_count(FILE *file_ptr, SuperBlock sb);
-void calculate_director_and_file_count(FILE *file_ptr, SuperBlock sb, int* dir_countP, int *file_countP, int inode_addresses[], int used_inode_count); // +
+void calculate_director_and_file_count(FILE *file_ptr, SuperBlock sb, int* dir_countP, int *file_countP, int inode_addresses[], int used_inode_count); 
 int first_place_to_add_directory_structor(FILE *file_ptr, SuperBlock sb, int block_addr);
 void clean_the_removed_directory_space(FILE *file_ptr, SuperBlock sb, vector<int> other_parent_id_blocks_index, Directory removed_dir, int id);
 int find_place_of_directory(FILE *file_ptr, SuperBlock sb, int block_addr, Directory dir, bool *first_time);
@@ -40,7 +40,7 @@ void set_size_for_directory(FILE *file_ptr, SuperBlock sb, int i_node_id, int us
 void free_bitmap_blocks_indexes_different_from_given(FILE *file_ptr, SuperBlock sb, int block_index[], int size);
 void clean_block(FILE *file_ptr, SuperBlock sb, vector<int> block_index);
 bool is_all_free(FILE *file_ptr, SuperBlock sb, int block_addr);
-void set_all_linked_size(FILE *file_ptr, SuperBlock sb, int inode_addresses[], int used_inode_count, char *lnsym_path, int file_size);
+void set_all_linked_size_and_time(FILE *file_ptr, SuperBlock sb, int inode_addresses[], int used_inode_count, char *lnsym_path, int file_size, bool time_control);
 
 // print fonks....
 void printSuperBlock(SuperBlock sb);
@@ -670,7 +670,6 @@ int write(FILE *file_ptr, char *path, char *file)
 		iNode check_the_file;
 		fread(&check_the_file, sizeof(iNode), 1, file_ptr);
 
-		bool flag_for_adding_block = true;
 		bool likend_size_control = false;
 		FILE *new_file_ptr;
 		new_file_ptr = fopen(linux_file, "r");
@@ -709,9 +708,7 @@ int write(FILE *file_ptr, char *path, char *file)
 
 				lnsym_parent_id = current_parent_id;
 			}
-
 			parent_id = lnsym_parent_id;	
-			flag_for_adding_block = false;
 			likend_size_control = true;
 		}
 
@@ -814,8 +811,11 @@ int write(FILE *file_ptr, char *path, char *file)
 		fseek(file_ptr, sb.bitmap_position, SEEK_SET);
 		fwrite(&bmb, sizeof(bmb), 1, file_ptr);
 		
+		if(likend_size_control)
+			set_all_linked_size_and_time(file_ptr, sb, inode_addresses, used_inode_count, check_the_file.lnsym_path, reading_size, true); // for linked
+		else
+			set_all_linked_size_and_time(file_ptr, sb, inode_addresses, used_inode_count, real_path_and_file, reading_size, false); // not linked (but it could be parent of link)
 
-		set_all_linked_size(file_ptr, sb, inode_addresses, used_inode_count, check_the_file.lnsym_path ,reading_size);
 		cout << "ali haydar : " << parent_id << endl;
 	}
 
@@ -1240,7 +1240,7 @@ int ln(FILE *file_ptr, char *source, char *dest)
 	cout << "It is OK to run" << endl;
 	cout << "Source path and file name : " << source << endl;
 	cout << "Destitation path and file: " << dest << endl;
-
+	cout << "Hard-Linking is not available!" << endl;
 
 	return 1;
 }
@@ -1385,6 +1385,13 @@ int lnsym(FILE *file_ptr, char *source, char *dest)
 	{
 		cout << "File System Error!" << endl;
 		cout << "--Same file name could not be possible in the same directory!" << endl;
+		return -1;
+	}
+
+	if(strlen(tokens_dest[tokens_size_dest - 1]) >= FileNameLength)
+	{
+		cout << "File System Error!" << endl;
+		cout << "A file name can have at most " << FileNameLength << " characters"<< endl;
 		return -1;
 	}
 
@@ -1792,7 +1799,7 @@ int find_direct_block_index(iNode i_node)
 void list_print_given_id(FILE *file_ptr, SuperBlock sb, int i_node_id, int inode_addresses[], int used_inode_count)
 {
 	int total = 0;
-
+	bool flag;
 	iNode inode_arr[used_inode_count];
 
 	for(int i = 0; i < used_inode_count; ++i)
@@ -1800,19 +1807,31 @@ void list_print_given_id(FILE *file_ptr, SuperBlock sb, int i_node_id, int inode
 		fseek(file_ptr, inode_addresses[i], SEEK_SET);
 		fread(&inode_arr[i], sizeof(iNode), 1, file_ptr);
 
+		flag = false;
 		if(inode_arr[i].parent_inode_id == i_node_id && inode_arr[i].i_node_id != i_node_id)
 		{
 			if(inode_arr[i].type == 0) // directory
 				cout << "Directory    cse312@ubuntu ";
-			else if(inode_arr[i].type == 1) // directoy
+			else if(inode_arr[i].type == 1 && strcmp(inode_arr[i].lnsym_path, "-") == 0) // file
 				cout << "RegularFile  cse312@ubuntu ";
+			else if(strcmp(inode_arr[i].lnsym_path, "-") != 0)
+			{
+				flag = true;
+				cout << "LinkedFile   cse312@ubuntu ";
+			}
 
 			total = total + inode_arr[i].size_of_file; 
 			printf("%7d ", inode_arr[i].size_of_file);
 			char* date = ctime(&inode_arr[i].last_modification);
 			date[strlen(date) - 6] = '\0';
 			cout << date << " ";
-			cout << inode_arr[i].file_name << endl;
+			if(!flag)
+				cout << inode_arr[i].file_name << endl;
+			else
+			{
+				cout << inode_arr[i].file_name << " -> ";
+				cout << inode_arr[i].lnsym_path << endl;
+			}
 		}
 	}
 	cout << "Total : " << total  << " bytes" << endl;
@@ -2070,7 +2089,7 @@ bool is_all_free(FILE *file_ptr, SuperBlock sb, int block_addr)
 	return true;
 }
 
-void set_all_linked_size(FILE *file_ptr, SuperBlock sb, int inode_addresses[], int used_inode_count, char *lnsym_path, int file_size)
+void set_all_linked_size_and_time(FILE *file_ptr, SuperBlock sb, int inode_addresses[], int used_inode_count, char *lnsym_path, int file_size, bool time_control)
 {
 	iNode inode_arr[used_inode_count];
 
@@ -2085,6 +2104,10 @@ void set_all_linked_size(FILE *file_ptr, SuperBlock sb, int inode_addresses[], i
 		{
 			cout << "ALI HAYDAR : " << inode_arr[i].file_name << endl; 
 			inode_arr[i].size_of_file = file_size;
+			
+			if(time_control)
+				inode_arr[i].last_modification = time(0);
+			
 			fseek(file_ptr, inode_addresses[i], SEEK_SET);
 			fwrite(&inode_arr[i], sizeof(iNode), 1, file_ptr);
 		}

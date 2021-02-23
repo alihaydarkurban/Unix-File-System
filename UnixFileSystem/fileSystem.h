@@ -12,10 +12,10 @@ using namespace std;
 
 #define MAX_PATH_SIZE 192
 #define SuperBlockItems 7
-#define DirectBlocksNum 2
+#define DirectBlocksNum 10
 #define _1KB 1024 // 1 kilobyte = 1024 bytes
 #define _1MB 1048576 // _1KB * _1KB
-#define FileNameLength 400
+#define FileNameLength 16
 #define OP_SIZE 10
 #define OP_STR_SIZE 10
 
