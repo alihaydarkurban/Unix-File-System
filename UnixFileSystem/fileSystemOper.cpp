@@ -42,14 +42,6 @@ void clean_block(FILE *file_ptr, SuperBlock sb, vector<int> block_index);
 bool is_all_free(FILE *file_ptr, SuperBlock sb, int block_addr);
 void set_all_linked_size_and_time(FILE *file_ptr, SuperBlock sb, int inode_addresses[], int used_inode_count, char *lnsym_path, int file_size, bool time_control);
 
-// print fonks....
-void printSuperBlock(SuperBlock sb);
-void print_iNode(FILE *file_ptr, SuperBlock sb);
-void print_BitMapBlock(BitMapBlock bmb);
-void printSizeOfStructs();
-void silinecekFonk(char *file_system);
-// print fonks....
-
 int main(int argc, char *argv[])
 {
 	int operation_index;
@@ -95,66 +87,7 @@ int main(int argc, char *argv[])
 	}
 	fclose(file_ptr);
 
-	// silinecekFonk(file_system);
-
 	return 0;
-}
-
-void silinecekFonk(char *file_system)
-{
-	FILE *file_ptr;
-	file_ptr = fopen(file_system, "r");
-
-	printSizeOfStructs();
-
-	SuperBlock sb;
-	fread(&sb, sizeof(sb), 1, file_ptr);
-
-	printSuperBlock(sb);
-	print_iNode(file_ptr, sb);
-
-	// BitMapBlock bmb;
-	// fseek(file_ptr, sb.bitmap_position, SEEK_SET);
-	// fread(&bmb, sizeof(bmb), 1, file_ptr);
-	// print_BitMapBlock(bmb);
-
-	// fseek(file_ptr, sb.bitmap_inode_positon, SEEK_SET);
-	// cout << "bitmap_inode : ";
-	// int bm_inode;
-	// for(int i = 0; i < sb.amount_of_i_nodes; ++i)
-	// {
-	// 	fread(&bm_inode, sizeof(bm_inode), 1, file_ptr);
-	// 	cout << bm_inode << " ";
-	// }
-	// cout << endl;
-
-	Directory dir;
-	fseek(file_ptr, sb.block_position +(6*sb.block_size),   SEEK_SET);
-	fread(&dir, sizeof(dir), 1, file_ptr);
-
-	cout << "inode : " << dir.i_node_number << endl;
-	cout << "file  : " << dir.file_name << endl;
-
-	// fseek(file_ptr, 44316, SEEK_SET);
-	// char ch = 'X';
-	// int size = 0;
-	// for(int i = 0; ; ++i)
-	// {
-	// 	fread(&ch, sizeof(ch), 1, file_ptr);
-	// 	if(ch != '\0')
-	// 	{
-	// 		cout << ch << "-";
-	// 		size++;
-	// 	}
-	// 	else
-	// 	{
-	// 		break;
-	// 	}
-	// }
-
-	// cout << "silicenek : " << size << endl;
-
-	fclose(file_ptr);
 }
 
 int is_regular_operation(char * op)
@@ -259,8 +192,6 @@ int mkdir(FILE *file_ptr, char *path_and_dir, char *must_be_null)
 
 	// If tokes size = 1 then this loop will not work.
 	// And this means that you will add the root directory.
-
-
 	int inode_addresses[sb.amount_of_i_nodes];
 	int used_inode_count = find_used_inode_addr(file_ptr, sb, inode_addresses);
 
@@ -295,8 +226,6 @@ int mkdir(FILE *file_ptr, char *path_and_dir, char *must_be_null)
 	vector<int> parent_blocks_index = calculate_blocks_index(file_ptr, sb, parent_id);	// Finds the parent's used blocks index
 
 	int used_block_count = parent_blocks_index.size();
-	cout << "ROOT_BLOCKSIZE : "<< parent_blocks_index.size() << endl;
-
 	int usable_block_addr = find_block_addr_for_adding_file(file_ptr, sb, parent_id, parent_blocks_index);
 
 	if(parent_blocks_index.size() == DirectBlocksNum && usable_block_addr == -1) // If the direct blocks are full
@@ -321,19 +250,14 @@ int mkdir(FILE *file_ptr, char *path_and_dir, char *must_be_null)
 		cout << "A directory name can have at most " << FileNameLength << " characters"<< endl;
 		return -1;
 	}
-
 	// find_block_addr_for_adding_file find the first useable block addr.
 	// It returns -1 if the parent inode needs new block.
 	// int usable_block_addr = find_block_addr_for_adding_file(file_ptr, sb, parent_id, parent_blocks_index);
-	cout << "-->" << usable_block_addr << endl;
-
 	if(usable_block_addr == -1) // parent inode's direct_block needs new block 
 	{
-		cout << "LAN YENI BLOCK GEREK " << endl;
 		// This finds a free index and this free index must be different from free_block_index
 		int new_block_index_for_parent = free_bitmap_index_different_from_given(file_ptr, sb, free_block_index); 
 
-		cout << "VERILEN BLOCK ID : " << new_block_index_for_parent << endl;
 		if(new_block_index_for_parent == -1)
 		{
 			cout << "File System Error!" << endl;
@@ -348,7 +272,6 @@ int mkdir(FILE *file_ptr, char *path_and_dir, char *must_be_null)
 		root_inode.direct_block[direct_block_index] = new_block_index_for_parent;
 		usable_block_addr = calculate_block_addr(sb, new_block_index_for_parent); // Calculate the new block addr of new_block_index_for_parent
 
-		cout << "YENI BLOCK ADRES " << usable_block_addr << endl;
 		fseek(file_ptr, parent_inode_position, SEEK_SET); 
 		fwrite(&root_inode, sizeof(root_inode), 1, file_ptr);
 
@@ -1552,19 +1475,19 @@ int fsck(FILE *file_ptr, char *must_be_null1, char *must_be_null2)
 	}
 	
 	cout << "Used Block Table" << endl;
-	for(int i = 0; i < 10; ++i) // for(int i = 0; i < sb.amount_of_block; ++i)
+	for(int i = 0; i < 40; ++i) // for(int i = 0; i < sb.amount_of_block; ++i)
 		cout << used_block_arr[i] << " ";
 
 	cout << "\n\nFree Block Table" << endl;
-	for(int i = 0; i < 10; ++i) // for(int i = 0; i < sb.amount_of_block; ++i)
+	for(int i = 0; i < 40; ++i) // for(int i = 0; i < sb.amount_of_block; ++i)
 		cout << free_block_arr[i] << " ";
 
 	cout << "\n\nUsed I-node Table" << endl;
-	for(int i = 0; i < 10; ++i) // for(int i = 0; i < sb.amount_of_i_nodes; ++i)
+	for(int i = 0; i < 40; ++i) // for(int i = 0; i < sb.amount_of_i_nodes; ++i)
 		cout << used_inode_arr[i] << " ";
 
 	cout << "\n\nFree I-node Table" << endl;
-	for(int i = 0; i < 10; ++i) // for(int i = 0; i < sb.amount_of_i_nodes; ++i)
+	for(int i = 0; i < 40; ++i) // for(int i = 0; i < sb.amount_of_i_nodes; ++i)
 		cout << free_inode_arr[i] << " ";
 
 	cout << endl;
@@ -2112,85 +2035,4 @@ void set_all_linked_size_and_time(FILE *file_ptr, SuperBlock sb, int inode_addre
 			fwrite(&inode_arr[i], sizeof(iNode), 1, file_ptr);
 		}
 	}
-}
-
-void printSuperBlock(SuperBlock sb)
-{
-	cout << "================================" << endl;
-	cout << "block_size : " << sb.block_size << endl;
-	cout << "i_node_position : " << sb.i_node_position << endl;
-	cout << "bitmap_position : " << sb.bitmap_position << endl;
-	cout << "bitmap_inode_positon : " << sb.bitmap_inode_positon << endl;
-	cout << "block_position : " << sb.block_position << endl;
-	cout << "amount_of_block : " << sb.amount_of_block << endl;
-	cout << "amount_of_i_nodes : " << sb.amount_of_i_nodes << endl;
-
-	cout << "Total Usage : " << sb.block_position + (sb.block_size  * sb.amount_of_block) << endl;
-	cout << "NOTUSESABLE : " << _1MB - (sb.block_position + (sb.block_size  * sb.amount_of_block)) << endl;
-	cout << "================================" << endl;
-}
-
-void print_iNode(FILE *file_ptr, SuperBlock sb)
-{
-	int used_inode_count = 0;
-	vector<int> index_of_used_inodes;
-	fseek(file_ptr, sb.bitmap_inode_positon, SEEK_SET);
-
-	int bm_inode;
-	for(int i = 0; i < sb.amount_of_i_nodes; ++i)
-	{
-		fread(&bm_inode, sizeof(bm_inode), 1, file_ptr);
-		if(bm_inode != 0)
-		{
-			index_of_used_inodes.push_back(i);
-			used_inode_count++;
-		}
-	}
-	int used_inode_addr[used_inode_count];
-
-	for(int i = 0; i < used_inode_count; ++i)
-		used_inode_addr[i] = calculate_inode_addr(sb, index_of_used_inodes[i]);
-
-	iNode inode_arr[used_inode_count];
-
-	for(int i = 0; i < used_inode_count; ++i)
-	{
-		fseek(file_ptr, used_inode_addr[i], SEEK_SET);
-		fread(&inode_arr[i], sizeof(iNode), 1, file_ptr);
-
-		cout << "================================" << endl;
-		cout << "i_node_id : " << inode_arr[i].i_node_id << endl;
-		cout << "parent_inode_id : " << inode_arr[i].parent_inode_id << endl;
-		cout << "size_of_file : " << inode_arr[i].size_of_file << endl;
-		cout << "type : " << inode_arr[i].type << endl;
-
-		cout << "direct_block : ";
-		for(int j = 0; j < DirectBlocksNum; ++j)
-			cout << inode_arr[i].direct_block[j] << " ";
-		cout << endl;
-
-		char* date = ctime(&inode_arr[i].last_modification);
-		cout << "last_modification : " << date;
-		cout << "file_name : " << inode_arr[i].file_name << endl;
-		cout << "================================" << endl;	
-	}
-}
-
-void print_BitMapBlock(BitMapBlock bmb)
-{
-	cout << "================================" << endl;
-	cout << "max_bitmap_block : ";
-	for(int i = 0; bmb.max_bitmap_block[i] != -1; ++i)
-		cout << bmb.max_bitmap_block[i] << " "; 
-	cout << endl;
-	cout << "================================" << endl;
-}
-
-void printSizeOfStructs()
-{
-	cout << "================================" << endl;
-	cout << "SuperBlock : " << sizeof(SuperBlock) << endl;
-	cout << "iNode : " << sizeof(iNode) << endl;
-	cout << "BitMapBlock : " << sizeof(BitMapBlock) << endl;
-	cout << "================================" << endl;
 }

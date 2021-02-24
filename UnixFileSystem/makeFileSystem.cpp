@@ -1,6 +1,8 @@
 #include "fileSystem.h"
 
 /*
+	ORDER OF FILE SYSTEM
+	====================
 	SuperBlock
 	iNode
 	BitMapBlock
@@ -17,12 +19,6 @@ void init_remaining(FILE *file_ptr, int remaining_size);
 void calculation(int *used_size, int *remaining_size, int *amount_of_block, int *i_node_position, 
 	int *bitmap_position, int *block_position, int *bitmap_inode_positon, int block_size, int num_of_i_nodes);
 int init_root(char *file_system);
-
-void silinecekFonk(char *file_name);
-void printSizeOfStructs();
-void printSuperBlock(SuperBlock sb);
-void print_iNode(iNode i_node);
-void print_BitMapBlock(BitMapBlock bmb);
 
 int main(int argc, char const *argv[])
 {
@@ -92,8 +88,6 @@ int init_file_system(char *file_system, int block_size, int num_of_i_nodes)
 	fclose(file_ptr);
 
 	init_root(file_system); // Create root directory
-
-	silinecekFonk(file_system); // bunu en son sil
 
 	return 1;
 }
@@ -218,94 +212,4 @@ int init_root(char *file_system)
 
 	fclose(file_ptr);
 	return 1;
-}
-
-void silinecekFonk(char *file_system)
-{
-	FILE *file_ptr;
-	file_ptr = fopen(file_system, "r");
-
-	printSizeOfStructs();
-
-	SuperBlock deneme;
-	fread(&deneme, sizeof(deneme), 1, file_ptr);
-	printSuperBlock(deneme);
-
-	fseek(file_ptr, sizeof(SuperBlock), SEEK_SET);
-
-	iNode deneme2;
-	fread(&deneme2, sizeof(deneme2), 1, file_ptr);
-	print_iNode(deneme2);
-
-	fseek(file_ptr, deneme.bitmap_position, SEEK_SET);
-
-	BitMapBlock deneme3;
-	fread(&deneme3, sizeof(deneme3), 1, file_ptr);
-	print_BitMapBlock(deneme3);
-
-	cout << "bitmap_inode : ";
-	for(int i = 0; i < deneme.amount_of_i_nodes; ++i)
-	{
-		int temp;
-		fread(&temp, sizeof(temp), 1, file_ptr);
-		cout << temp << " ";
-	}
-	cout << endl;
-
-	fclose(file_ptr);
-}
-
-void printSizeOfStructs()
-{
-	cout << "================================" << endl;
-	cout << "SuperBlock : " << sizeof(SuperBlock) << endl;
-	cout << "iNode : " << sizeof(iNode) << endl;
-	cout << "BitMapBlock : " << sizeof(BitMapBlock) << endl;
-	cout << "================================" << endl;
-}
-
-void printSuperBlock(SuperBlock sb)
-{
-	cout << "================================" << endl;
-	cout << "block_size : " << sb.block_size << endl;
-	cout << "i_node_position : " << sb.i_node_position << endl;
-	cout << "bitmap_position : " << sb.bitmap_position << endl;
-	cout << "bitmap_inode_positon : " << sb.bitmap_inode_positon << endl;
-	cout << "block_position : " << sb.block_position << endl;
-	cout << "amount_of_block : " << sb.amount_of_block << endl;
-	cout << "amount_of_i_nodes : " << sb.amount_of_i_nodes << endl;
-
-	cout << "Total Usage : " << sb.block_position + (sb.block_size  * sb.amount_of_block) << endl;
-	cout << "NOTUSESABLE : " << _1MB - (sb.block_position + (sb.block_size  * sb.amount_of_block)) << endl;
-	cout << "================================" << endl;
-}
-
-void print_iNode(iNode i_node)
-{
-	cout << "================================" << endl;
-	cout << "i_node_id : " << i_node.i_node_id << endl;
-	cout << "parent_inode_id : " << i_node.parent_inode_id << endl;
-	cout << "size_of_file : " << i_node.size_of_file << endl;
-	cout << "type : " << i_node.type << endl;
-
-	cout << "direct_block : ";
-	for(int i = 0; i < DirectBlocksNum; ++i)
-		cout << i_node.direct_block[i] << " ";
-	cout << endl;
-
-	char* date = ctime(&i_node.last_modification);
-	cout << "last_modification : " << date;
-	cout << "file_name : " << i_node.file_name << endl;
-	cout << "lnsym_path : " << i_node.lnsym_path << endl;
-	cout << "================================" << endl;
-}
-
-void print_BitMapBlock(BitMapBlock bmb)
-{
-	cout << "================================" << endl;
-	cout << "max_bitmap_block : ";
-	for(int i = 0; bmb.max_bitmap_block[i] != -1; ++i)
-		cout << bmb.max_bitmap_block[i] << " "; 
-	cout << endl;
-	cout << "================================" << endl;
 }
