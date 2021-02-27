@@ -66,6 +66,13 @@ int init_file_system(char *file_system, int block_size, int num_of_i_nodes)
 		&bitmap_position, &block_position, &bitmap_inode_positon, block_size, num_of_i_nodes);
 
 
+	if(remaining_size < block_size)
+	{
+		cout << "File System Error!" << endl;
+		cout << "Size of the file system can not be greater than 1MB" << endl;
+		return -1;
+	}
+
 	int super_blok_items[SuperBlockItems];
 	super_blok_items[0] = block_size; // block_size
 	super_blok_items[1] = i_node_position; // i_node_position

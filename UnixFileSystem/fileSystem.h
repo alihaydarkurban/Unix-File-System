@@ -16,7 +16,7 @@ using namespace std;
 #define _1KB 1024			 	// 1 kilobyte = 1024 bytes
 #define _1MB 1048576 		 	// _1KB * _1KB
 #define FileNameLength 16		// Maximum file name size
-#define OP_SIZE 10				// It keeps the number of operation does the file system have
+#define OP_SIZE 9				// It keeps the number of operation does the file system have
 #define OP_STR_SIZE 10			// Maximum size for operation char
 
 const char split[2] = "/";
@@ -28,7 +28,6 @@ const char operations [][OP_STR_SIZE] = {
 	"write", 
 	"read", 
 	"del", 
-	"ln", 
 	"lnsym", 
 	"fsck"
 };

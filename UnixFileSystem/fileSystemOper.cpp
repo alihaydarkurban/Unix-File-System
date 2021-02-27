@@ -75,9 +75,8 @@ int main(int argc, char *argv[])
 		case 4 : write(file_ptr, argv[3], argv[4]); break;
 		case 5 : read(file_ptr, argv[3], argv[4]); break;
 		case 6 : del(file_ptr, argv[3], argv[4]); break;
-		case 7 : ln(file_ptr, argv[3], argv[4]); break;
-		case 8 : lnsym(file_ptr, argv[3], argv[4]); break;
-		case 9 : fsck(file_ptr, argv[3], argv[4]); break;	
+		case 7 : lnsym(file_ptr, argv[3], argv[4]); break;
+		case 8 : fsck(file_ptr, argv[3], argv[4]); break;	
 		default:
 		{
 			cout << "File System Error!" << endl;
@@ -90,7 +89,7 @@ int main(int argc, char *argv[])
 	return 0;
 }
 
-int is_regular_operation(char * op)
+int is_regular_operation(char *op)
 {
 	// -1 means that op is not a regular operation
 	for(int i = 0; i < OP_SIZE; ++i)
@@ -1080,20 +1079,6 @@ int del(FILE *file_ptr, char *path_and_file, char *must_be_null)
 	return 1;
 }
 
-int ln(FILE *file_ptr, char *source, char *dest)
-{
-	if(source == NULL || dest == NULL)
-	{
-		cout << "File System Error!" << endl;
-		cout << "Runnable format is : ln [source path and file] [destitation path and file]" << endl;
-		return -1;
-	}
-	cout << "Source path and file name : " << source << endl;
-	cout << "Destitation path and file: " << dest << endl;
-	cout << "Hard-Linking is not available!" << endl;
-
-	return 1;
-}
 
 int lnsym(FILE *file_ptr, char *source, char *dest)
 { 
@@ -1632,13 +1617,13 @@ void list_print_given_id(FILE *file_ptr, SuperBlock sb, int i_node_id, int inode
 		if(inode_arr[i].parent_inode_id == i_node_id && inode_arr[i].i_node_id != i_node_id)
 		{
 			if(inode_arr[i].type == 0) // directory
-				cout << "Directory    cse312@ubuntu ";
+				cout << "Directory    alihaydarkurban@ubuntu ";
 			else if(inode_arr[i].type == 1 && strcmp(inode_arr[i].lnsym_path, "-") == 0) // file
-				cout << "RegularFile  cse312@ubuntu ";
+				cout << "RegularFile  alihaydarkurban@ubuntu ";
 			else if(strcmp(inode_arr[i].lnsym_path, "-") != 0)
 			{
 				flag = true;
-				cout << "LinkedFile   cse312@ubuntu ";
+				cout << "LinkedFile   alihaydarkurban@ubuntu ";
 			}
 
 			total = total + inode_arr[i].size_of_file; 
